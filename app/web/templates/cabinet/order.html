@@ -1,0 +1,53 @@
+{% extends "cabinet/base.html" %}
+{% from "cabinet/_widgets.html" import status_badge with context %}
+{% block title %}Заказ №{{ order.number }}{% endblock %}
+{% block content %}
+<div class="page-title">Заказ №{{ order.number }} {{ status_badge(order.status) }}
+  <div class="actions">{% if estimates %}<a class="btn accent" href="/cabinet/estimates/{{ estimates[0].uid }}.pdf">Скачать последнюю смету</a>{% endif %}</div>
+</div>
+<div class="grid g3">
+  <div class="card">
+    <div class="card-h"><h3>Клиент</h3></div>
+    <dl class="dl"><dt>Имя</dt><dd>{{ order.client_name or '—' }}</dd><dt>Телефон</dt><dd>{{ order.client_phone or '—' }}</dd>
+      <dt>Адрес</dt><dd>{{ order.client_address or '—' }}</dd><dt>Изделие</dt><dd>{{ order.title or '—' }}</dd><dt>Создан</dt><dd>{{ order.created_at|dt }}</dd></dl>
+  </div>
+  <div class="card">
+    <div class="card-h"><h3>Наценки заказа</h3></div>
+    <dl class="dl"><dt>Материалы</dt><dd>{{ order.markup_materials|qty }}%</dd><dt>Фурнитура</dt><dd>{{ order.markup_hardware|qty }}%</dd>
+      <dt>Работы цеха</dt><dd>{{ order.markup_works|qty }}%</dd><dt>Фикс. сумма</dt><dd>{{ order.fixed_addition|money }}</dd></dl>
+  </div>
+  <div class="card">
+    <div class="card-h"><h3>Итоги</h3></div>
+    <dl class="dl"><dt>Себестоимость</dt><dd>{{ order.cost_total|money }}</dd><dt>Доход от наценок</dt><dd>{{ order.markup_income|money }}</dd>
+      <dt>Цена клиенту</dt><dd><b>{{ order.price_total|money }}</b></dd></dl>
+  </div>
+</div>
+<div class="card" style="margin-top:16px">
+  <div class="card-h"><h3>Состав заказа</h3></div>
+  {% if groups %}
+  <div class="table-wrap"><table class="t">
+    <thead><tr><th>Позиция</th><th>Размер, мм</th><th class="num">Кол-во</th><th class="num">Цена ед.</th><th class="num">Себестоимость</th><th class="num">Цена клиенту</th></tr></thead>
+    {% for section, items in groups %}
+      <tbody><tr><td colspan="6" style="background:var(--accent-soft);font-weight:600">{{ section }}</td></tr>
+      {% for it in items %}<tr><td>{{ it.name }} <span class="badge">{{ {'material':'материал','hardware':'фурнитура','work':'работа'}[it.kind.value] }}</span></td>
+        <td>{% if it.height_mm and it.width_mm %}{{ it.height_mm }}×{{ it.width_mm }}{% elif it.width_mm %}{{ it.width_mm }}{% else %}—{% endif %}{% if it.pieces != 1 %} · {{ it.pieces|qty }} шт{% endif %}</td>
+        <td class="num">{{ it.quantity|qty }} {{ it.unit }}</td><td class="num">{{ it.unit_cost|money }}</td><td class="num">{{ it.cost|money }}</td><td class="num">{{ it.price|money }}</td></tr>{% endfor %}
+      </tbody>
+    {% endfor %}
+    <tfoot>{% if order.fixed_addition %}<tr><td colspan="5">{{ ctx.enterprise.fixed_addition_label }}</td><td class="num">{{ order.fixed_addition|money }}</td></tr>{% endif %}
+      <tr><td colspan="4">Итого</td><td class="num">{{ order.cost_total|money }}</td><td class="num">{{ order.price_total|money }}</td></tr></tfoot>
+  </table></div>
+  {% else %}<p class="muted">Позиции ещё не добавлены.</p>{% endif %}
+</div>
+<div class="grid g2" style="margin-top:16px">
+  <div class="card">
+    <div class="card-h"><h3>Сметы</h3></div>
+    {% if estimates %}<table class="t"><tbody>{% for e in estimates %}<tr><td><a href="/cabinet/estimates/{{ e.uid }}.pdf">{{ e.uid }}</a></td><td>{{ e.created_at|dt }}</td><td class="num">{{ e.total|money }}</td></tr>{% endfor %}</tbody></table>
+    {% else %}<p class="muted">PDF-смета ещё не формировалась.</p>{% endif %}
+  </div>
+  <div class="card">
+    <div class="card-h"><h3>История статусов</h3></div>
+    <table class="t"><tbody>{% for h in history %}<tr><td>{{ h.created_at|dt }}</td><td>{{ {'new':'Новый','in_progress':'В работе','manufactured':'Изготовлен','completed':'Завершён'}[h.to_status] }}</td><td class="muted">{{ h.user.full_name }}</td></tr>{% endfor %}</tbody></table>
+  </div>
+</div>
+{% endblock %}

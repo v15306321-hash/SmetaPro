@@ -1,0 +1,30 @@
+{% extends "cabinet/base.html" %}
+{% block title %}Пригласить друга{% endblock %}
+{% block content %}
+<div class="page-title">Пригласить друга</div>
+<div class="grid g3">
+  <div class="card kpi"><div class="label">Ваша скидка сейчас</div><div class="value">{{ ref.discount }}%</div><div class="vs">на одну следующую оплату подписки</div></div>
+  <div class="card kpi"><div class="label">Засчитано в цикле</div><div class="value">{{ ref.qualified_in_cycle }}</div><div class="vs">+10% за каждого, максимум {{ ref.max_discount }}%</div></div>
+  <div class="card kpi"><div class="label">Всего успешных приглашений</div><div class="value">{{ ref.total_successful }}</div><div class="vs">за всё время</div></div>
+</div>
+<div class="card" style="margin-top:16px">
+  <div class="card-h"><h3>Ваша персональная ссылка</h3></div>
+  <div class="row"><code style="word-break:break-all">{{ ref.links.telegram }}</code><button class="btn accent sm" type="button" data-copy="{{ ref.links.telegram }}">Скопировать</button>
+    <a class="btn ghost sm" href="https://t.me/share/url?url={{ ref.links.telegram|urlencode }}&text={{ 'Считаю сметы мебели в Furniture Estimate — попробуйте'|urlencode }}" rel="noopener">Отправить в Telegram</a></div>
+  <div class="progress" style="margin-top:16px;height:10px" role="progressbar" aria-valuenow="{{ ref.discount }}" aria-valuemax="50" aria-label="Накопленная скидка"><i style="width:{{ ref.discount * 2 }}%"></i></div>
+  <div class="row" style="justify-content:space-between;font-size:12px;color:var(--muted);margin-top:4px">{% for p in [0,10,20,30,40,50] %}<span>{{ p }}%</span>{% endfor %}</div>
+  <ul class="muted" style="margin-top:16px">
+    <li>Бонус засчитывается, когда приглашённое предприятие <b>впервые оплатит</b> подписку и оплата подтверждена.</li>
+    <li>Скидка одноразовая: после использования цикл обнуляется, ранее засчитанные предприятия повторно не учитываются.</li>
+    <li>Продления подписки приглашённых не дают новых бонусов. Скидка не меняет лимиты тарифа.</li>
+  </ul>
+</div>
+<div class="card" style="margin-top:16px">
+  <div class="card-h"><h3>История бонусов</h3></div>
+  {% set ST = {'registered': ('Зарегистрирован, ждём оплату', ''), 'qualified': ('Засчитан в текущем цикле', 'good'), 'used': ('Скидка использована', 'info'), 'annulled': ('Аннулирован', 'bad')} %}
+  {% if ref.history %}<div class="table-wrap"><table class="t"><thead><tr><th>Приглашённый</th><th>Регистрация</th><th>Первая оплата</th><th>Статус</th></tr></thead><tbody>
+    {% for r in ref.history %}<tr><td>{{ r.referred_enterprise.name if r.referred_enterprise else 'Предприятие ещё не создано' }}</td><td>{{ r.created_at|date }}</td><td>{{ r.qualified_at|date }}</td>
+      <td><span class="badge {{ ST[r.status.value][1] }}">{{ ST[r.status.value][0] }}</span></td></tr>{% endfor %}</tbody></table></div>
+  {% else %}<p class="muted">Пока никто не зарегистрировался по вашей ссылке.</p>{% endif %}
+</div>
+{% endblock %}

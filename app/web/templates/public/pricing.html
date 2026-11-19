@@ -1,0 +1,16 @@
+{% extends "public/base.html" %}
+{% from "partials/plans.html" import plan_cards, compare %}
+{% block title %}Тарифы — Furniture Estimate{% endblock %}
+{% block content %}
+<section class="hero">
+  <div class="wrap">
+    <div class="label">Тарифы</div>
+    <h1 class="display">Тарифы и лимиты</h1>
+    <p class="lead">Цены в узбекских сумах за 30 дней. Индивидуальные наценки доступны на всех тарифах. Скидка по реферальной программе — до 50% на одну следующую оплату.</p>
+    {{ plan_cards(plans) }}
+    <h2 class="h2" style="margin-top:56px">Сравнение</h2>
+    {{ compare(plans) }}
+    <p class="muted" style="font-size:14px;margin-top:20px">После окончания подписки платные функции блокируются, данные сохраняются. Остаток генераций смет на следующий период не переносится. <a href="/legal/subscription">Условия подписки</a></p>
+  </div>
+</section>
+{% endblock %}

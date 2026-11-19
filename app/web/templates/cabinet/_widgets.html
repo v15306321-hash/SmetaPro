@@ -1,0 +1,56 @@
+{% macro delta(cur, prev, good_up=True, pp=False) -%}
+  {%- if pp and (cur or prev) -%}
+    {%- set d = (cur - prev)|round(1) -%}
+    <span class="delta {{ 'flat' if d == 0 else ('up' if (d > 0) == good_up else 'down') }}" title="изменение в процентных пунктах">{{ '+' if d > 0 }}{{ d|string|replace('.', ',') }} п.п.</span>
+  {%- elif prev and prev != 0 -%}
+    {%- set d = ((cur - prev) / (prev|abs) * 100)|round(1) -%}
+    {%- set good = (d > 0) == good_up -%}
+    <span class="delta {{ 'flat' if d == 0 else ('up' if good else 'down') }}" title="к предыдущему периоду">{{ '+' if d > 0 }}{{ d|string|replace('.', ',') }}%</span>
+  {%- elif cur and cur != 0 -%}
+    <span class="delta flat">новое</span>
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro kpi(label, value, cur, prev, spark=None, color='s1', good_up=True, vs='к прошлому периоду', pp=False) %}
+<div class="card kpi">
+  <div class="label">{{ label }} {{ delta(cur, prev, good_up, pp) }}</div>
+  <div class="value">{{ value }}</div>
+  <div class="vs">{{ vs }}</div>
+  {% if spark is not none %}<div style="height:48px"><canvas data-spark='{{ spark|tojson }}' data-color="{{ color }}" aria-hidden="true"></canvas></div>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro limits(usage) %}
+<div class="card">
+  <div class="card-h"><h3>Лимиты тарифа</h3>{% if usage.subscription %}<span class="more">осталось {{ usage.days_left }} дн.</span>{% endif %}</div>
+  {% if usage.subscription %}
+    {% for title, used, total in [('Генерации смет', usage.estimates_used, usage.estimates_limit), ('База материалов', usage.materials, usage.materials_limit), ('Пользователи', usage.users, usage.users_limit)] %}
+      {% set pct = (used / total * 100) if total else 0 %}
+      <div class="limit-row"><span>{{ title }}</span><span><b>{{ used }}</b> / {{ total }}</span></div>
+      <div class="progress {{ 'high' if pct >= 80 }}" role="progressbar" aria-valuenow="{{ used }}" aria-valuemax="{{ total }}" aria-label="{{ title }}"><i style="width:{{ [pct, 100]|min }}%"></i></div>
+    {% endfor %}
+  {% else %}
+    <p class="muted">Нет активной подписки. Платные функции заблокированы, данные сохранены.</p>
+    {% if ctx.can('billing.manage') %}<a class="btn accent" href="/cabinet/subscription">Выбрать тариф</a>{% endif %}
+  {% endif %}
+</div>
+{% endmacro %}
+
+{% macro status_badge(status) -%}
+  {%- set cls = {'new': 'info', 'in_progress': 'warn', 'manufactured': 'accent', 'completed': 'good'} -%}
+  {%- set titles = {'new': 'Новый', 'in_progress': 'В работе', 'manufactured': 'Изготовлен', 'completed': 'Завершён'} -%}
+  <span class="badge {{ cls[status.value] }}">{{ titles[status.value] }}</span>
+{%- endmacro %}
+
+{% macro pay_badge(status, titles) -%}
+  {%- set cls = {'awaiting_receipt': 'warn', 'pending': 'info', 'approved': 'good', 'rejected': 'bad', 'cancelled': ''} -%}
+  <span class="badge {{ cls[status.value] }}">{{ titles[status] }}</span>
+{%- endmacro %}
+
+{% macro locked(title, text, plan) %}
+<div class="card locked">
+  <div class="ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div>
+  <div style="flex:1"><b>{{ title }}</b><div class="muted">{{ text }}</div></div>
+  {% if plan %}<a class="btn accent" href="/cabinet/subscription">Перейти на {{ plan.title if plan.title else plan }}</a>{% endif %}
+</div>
+{% endmacro %}

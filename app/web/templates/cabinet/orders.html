@@ -1,0 +1,37 @@
+{% extends "cabinet/base.html" %}
+{% from "cabinet/_widgets.html" import status_badge with context %}
+{% block title %}Заказы{% endblock %}
+{% block content %}
+<div class="page-title">Заказы и сметы
+  <div class="actions"><a class="btn accent" href="{{ settings.bot_link }}" rel="noopener">Новый расчёт в боте</a></div>
+</div>
+<form class="card row" method="get" style="margin-bottom:16px">
+  <input class="input" name="q" value="{{ q }}" placeholder="Поиск по клиенту или изделию" style="max-width:320px" aria-label="Поиск">
+  {% if statuses_on %}
+  <select class="input" name="status" style="width:auto" aria-label="Статус">
+    <option value="">Все статусы</option>
+    {% for st, title in STATUS_TITLES.items() %}<option value="{{ st.value }}" {{ 'selected' if status == st.value }}>{{ title }}</option>{% endfor %}
+  </select>
+  {% endif %}
+  <button class="btn ghost">Найти</button>
+</form>
+<div class="card">
+  {% if orders %}
+  <div class="table-wrap"><table class="t">
+    <thead><tr><th>№</th><th>Дата</th><th>Клиент / изделие</th>{% if statuses_on %}<th>Статус</th>{% endif %}<th class="num">Себестоимость</th><th class="num">Цена клиенту</th></tr></thead>
+    <tbody>{% for o in orders %}
+      <tr><td><a href="/cabinet/orders/{{ o.id }}">{{ o.number }}</a></td><td>{{ o.created_at|date }}</td>
+        <td>{{ o.client_name or '—' }}<div class="muted">{{ o.title }}</div></td>
+        {% if statuses_on %}<td>{{ status_badge(o.status) }}</td>{% endif %}
+        <td class="num">{{ o.cost_total|money }}</td><td class="num"><b>{{ o.price_total|money }}</b></td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+  <div class="row" style="margin-top:12px;justify-content:flex-end">
+    {% if p > 1 %}<a class="btn ghost sm" href="?p={{ p - 1 }}&q={{ q|urlencode }}&status={{ status or '' }}">← Назад</a>{% endif %}
+    {% if has_next %}<a class="btn ghost sm" href="?p={{ p + 1 }}&q={{ q|urlencode }}&status={{ status or '' }}">Дальше →</a>{% endif %}
+  </div>
+  {% else %}
+  <div class="empty" style="text-align:center;padding:30px">Заказов не найдено. Расчёты создаются в Telegram-боте: «🧮 Новый расчёт».</div>
+  {% endif %}
+</div>
+{% endblock %}

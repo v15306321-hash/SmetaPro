@@ -1,0 +1,157 @@
+{% extends "public/base.html" %}
+{% from "partials/plans.html" import plan_cards %}
+{% block content %}
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <div class="label">SaaS для мебельных производств</div>
+      <h1 class="display">Сметы за минуты.<br>Прибыль — под контролем</h1>
+      <p class="lead">Furniture Estimate считает себестоимость и цену заказа по вашей базе материалов и наценкам, формирует PDF-смету для клиента и показывает, сколько на самом деле зарабатывает цех.</p>
+      <div class="hero-actions">
+        <a class="btn" href="{{ settings.bot_link }}" rel="noopener">Начать в Telegram</a>
+        <a class="btn btn-ghost" href="/pricing">Тарифы</a>
+      </div>
+      <div class="hero-stats">
+        <div><b>4</b><span>тарифа под масштаб цеха</span></div>
+        <div><b>PDF</b><span>смета клиенту в один клик</span></div>
+        <div><b>50%</b><span>скидки за приглашения</span></div>
+      </div>
+    </div>
+    <div class="paper" aria-label="Пример PDF-сметы">
+      <div class="paper-head">
+        <div><strong>СМЕТА</strong><div style="color:#6f6a64;margin-top:6px">№ EST-241105-K7Q2M</div></div>
+        <div style="text-align:right;color:#6f6a64">Мастерская «Дуб»<br>+998 90 000 00 00</div>
+      </div>
+      <table>
+        <thead><tr><th>Позиция</th><th>Кол-во</th><th>Сумма</th></tr></thead>
+        <tbody>
+          <tr><td>ЛДСП Egger 16 мм</td><td>8,6 м²</td><td>1 118 000</td></tr>
+          <tr><td>Фасады МДФ эмаль</td><td>4,2 м²</td><td>2 940 000</td></tr>
+          <tr><td>Петли Blum с доводчиком</td><td>14 шт</td><td>504 000</td></tr>
+          <tr><td>Сборка и монтаж</td><td>1 усл.</td><td>900 000</td></tr>
+        </tbody>
+      </table>
+      <div class="total"><span>Итого</span><span>5 462 000 сум</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="calc">
+  <div class="wrap">
+    <div class="panel">
+      <div class="label">Калькулятор стоимости</div>
+      <h2 class="h2">Рассчитайте<br>стоимость</h2>
+      <div class="calc-grid">
+        <div class="calc-preview" aria-live="polite">
+          <h4>Предварительная смета</h4>
+          <span style="color:#5d5852;font-size:13px">Так выглядит расчёт в боте — по позициям и с итогом</span>
+          <ul class="calc-lines" id="calc-lines"></ul>
+          <div class="calc-total"><span>Итого, примерно</span><b id="calc-total">—</b></div>
+        </div>
+        <form id="calc-form" onsubmit="return false">
+          <div class="step">
+            <div class="step-title">1. Выберите форму кухни:</div>
+            <div class="shapes" role="group" aria-label="Форма кухни">
+              <button type="button" class="shape" data-shape="line" aria-pressed="false" aria-label="Прямая"><svg viewBox="0 0 30 30"><rect x="3" y="12" width="24" height="6" rx="1.5" fill="currentColor"/></svg></button>
+              <button type="button" class="shape" data-shape="l" aria-pressed="false" aria-label="Угловая"><svg viewBox="0 0 30 30"><path d="M4 5h22v6H10v15H4z" fill="currentColor"/></svg></button>
+              <button type="button" class="shape" data-shape="u" aria-pressed="true" aria-label="П-образная"><svg viewBox="0 0 30 30"><path d="M4 4h22v22h-6V10H10v16H4z" fill="currentColor"/></svg></button>
+              <button type="button" class="shape" data-shape="par" aria-pressed="false" aria-label="Параллельная"><svg viewBox="0 0 30 30"><rect x="3" y="6" width="24" height="6" rx="1.5" fill="currentColor"/><rect x="3" y="18" width="24" height="6" rx="1.5" fill="currentColor"/></svg></button>
+              <svg class="shape-diagram" viewBox="0 0 150 74" aria-hidden="true">
+                <g id="diagram" fill="none" stroke="#b8937a" stroke-width="10" stroke-linejoin="round"></g>
+              </svg>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-title">2. Укажите размеры:</div>
+            <div class="dims">
+              <input class="input" name="a" inputmode="decimal" placeholder="A: метров" value="4,3" aria-label="Сторона A, метров">
+              <input class="input" name="b" inputmode="decimal" placeholder="B: метров" aria-label="Сторона B, метров">
+              <input class="input" name="c" inputmode="decimal" placeholder="C: метров" aria-label="Сторона C, метров">
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-title">3. Выберите материалы фасадов:</div>
+            <div class="radios">
+              {% for key, title in [("ldsp","ЛДСП"),("3d","3D-фасады"),("oak","Массив дуба"),("eco","Эко-пластик"),("patina","МДФ с патиной"),("enamel","Эмаль"),("photo","Фотопечать"),("veneer","Шпон"),("combo","Комбинированная")] %}
+              <label class="radio"><input type="radio" name="facade" value="{{ key }}" {{ 'checked' if key=='eco' }}><span>{{ title }}</span></label>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="calc-foot">
+            <button class="btn" type="button" id="calc-btn" style="min-width:220px">Рассчитать</button>
+            <small>Демонстрация: цены условные. В сервисе расчёт идёт по вашей базе материалов и вашим наценкам.</small>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="label">Почему мы</div>
+    <h2 class="h2">Преимущества<br>работы с нами</h2>
+    <div class="adv-grid">
+      <div class="adv light">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="#1b1918" stroke-width="2"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M5 3 2 6M19 3l3 3"/></svg></div>
+        <h3>Расчёт за минуты</h3>
+        <p>Позиции из вашей базы, размеры в мм — площадь и сумма считаются сами</p>
+      </div>
+      <div class="adv light">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="#1b1918" stroke-width="2"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></svg></div>
+        <h3>Профессиональные PDF</h3>
+        <p>Смета с вашими реквизитами и логотипом — сразу клиенту в Telegram</p>
+      </div>
+      <div class="adv dark tall">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="#f3efea" stroke-width="2"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></div>
+        <h3>Прозрачные финансы</h3>
+        <p>Выручка, себестоимость, валовая прибыль и производственные затраты за любой период</p>
+        <div class="mini-bars" aria-hidden="true"><i style="height:38%"></i><i style="height:55%"></i><i style="height:46%"></i><i style="height:72%"></i><i style="height:64%"></i><i style="height:88%"></i><i style="height:80%"></i></div>
+        <span class="chip">BUSINESS · PRO · ENTERPRISE</span>
+      </div>
+      <div class="adv light">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="#1b1918" stroke-width="2"><path d="M12 2v6M12 22v-6M4.9 4.9l4.2 4.2M19.1 19.1l-4.2-4.2M2 12h6M22 12h-6"/></svg></div>
+        <h3>Свои наценки</h3>
+        <p>Отдельно на материалы, фурнитуру и работы цеха — на любом тарифе</p>
+      </div>
+      <div class="adv light">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="#1b1918" stroke-width="2"><circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-3.5 3-6 7-6s7 2.5 7 6M16 4.5a3.5 3.5 0 0 1 0 7M22 20c0-2.5-1.5-4.5-4-5.5"/></svg></div>
+        <h3>Команда цеха</h3>
+        <p>Владелец, администратор, мастер и менеджер — у каждого свои права</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="label">Тарифы</div>
+    <h2 class="h2">Под масштаб<br>вашего цеха</h2>
+    {{ plan_cards(plans) }}
+    <p class="muted" style="margin-top:16px;font-size:14px">Подписка — 30 дней. Лимит смет обновляется каждый оплаченный период. <a href="/pricing">Подробное сравнение →</a></p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="label">Вопросы</div>
+    <h2 class="h2">Коротко о главном</h2>
+    <div class="faq">
+      {% for q, a in faq %}<details><summary>{{ q }}</summary><p>{{ a }}</p></details>{% endfor %}
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="cta">
+      <h2 class="h2">Первая смета —<br>сегодня</h2>
+      <a class="btn" href="{{ settings.bot_link }}" rel="noopener">Открыть Telegram-бота</a>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/demo-calc.js" defer></script>
+{% endblock %}

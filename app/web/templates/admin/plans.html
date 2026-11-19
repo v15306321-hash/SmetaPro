@@ -1,0 +1,38 @@
+{% extends "cabinet/base.html" %}
+{% block title %}Тарифы и реквизиты{% endblock %}
+{% block content %}
+<div class="page-title">Тарифы и лимиты</div>
+<div class="grid g2">
+  {% for p in plans %}
+  <form class="card" method="post" action="/admin/plans/{{ p.code }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <div class="card-h"><h3>{{ p.title }}</h3><label class="more"><input type="checkbox" name="is_active" value="1" {{ 'checked' if p.is_active }}> доступен для покупки</label></div>
+    <div class="form-grid">
+      <div class="field" style="grid-column:1/-1"><label>Подзаголовок</label><input class="input" name="subtitle" value="{{ p.subtitle }}"></div>
+      <div class="field"><label>Цена за 30 дней, сум</label><input class="input" name="price" value="{{ p.price|qty }}" inputmode="decimal"></div>
+      <div class="field"><label>Генерации смет</label><input class="input" name="estimates_limit" type="number" min="1" value="{{ p.estimates_limit }}"></div>
+      <div class="field"><label>Позиции базы материалов</label><input class="input" name="materials_limit" type="number" min="1" value="{{ p.materials_limit }}"></div>
+      <div class="field"><label>Пользователи (вкл. владельца)</label><input class="input" name="users_limit" type="number" min="1" value="{{ p.users_limit }}"></div>
+    </div>
+    <div class="hint" style="margin-top:10px">Функции:</div>
+    {% for k, t in FEATURES.items() %}<label style="display:block"><input type="checkbox" name="f_{{ k }}" value="1" {{ 'checked' if p.features.get(k) }}> {{ t }}</label>{% endfor %}
+    <button class="btn" style="margin-top:12px" onclick="return confirm('Изменить тариф {{ p.code }}? Изменение действует сразу для всех предприятий на этом тарифе.')">Сохранить</button>
+  </form>
+  {% endfor %}
+</div>
+<div class="page-title" style="margin-top:28px">Платёжные реквизиты</div>
+<div class="grid g2">
+  {% for m in methods %}
+  <form class="card" method="post" action="/admin/methods/{{ m.code }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <div class="card-h"><h3>{{ m.title }}</h3><label class="more"><input type="checkbox" name="is_active" value="1" {{ 'checked' if m.is_active }}> активен</label></div>
+    <div class="form-grid">
+      <div class="field"><label>Название</label><input class="input" name="title" value="{{ m.title }}"></div>
+      <div class="field"><label>Получатель</label><input class="input" name="holder" value="{{ m.holder }}"></div>
+      <div class="field" style="grid-column:1/-1"><label>{{ 'Реквизиты (номер карты / счёта)' if m.kind == 'manual' else 'Описание (API-токен задаётся только в переменных окружения)' }}</label><input class="input" name="details" value="{{ m.details }}"></div>
+    </div>
+    <button class="btn" style="margin-top:12px">Сохранить</button>
+  </form>
+  {% endfor %}
+</div>
+{% endblock %}

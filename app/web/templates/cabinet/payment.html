@@ -1,0 +1,46 @@
+{% extends "cabinet/base.html" %}
+{% from "cabinet/_widgets.html" import pay_badge with context %}
+{% block title %}Заявка {{ pr.uid }}{% endblock %}
+{% block content %}
+<div class="page-title">Заявка {{ pr.uid }} {{ pay_badge(pr.status, STATUS_TITLES) }}</div>
+<div class="grid g2">
+  <div class="card">
+    <div class="card-h"><h3>Сумма к оплате</h3></div>
+    <div style="font-size:30px;font-weight:700">{{ pr.amount|money }}</div>
+    {% if pr.discount_percent %}<div class="muted">Тариф {{ pr.plan_code }}: {{ pr.base_amount|money }} − реферальная скидка {{ pr.discount_percent }}%</div>
+    {% else %}<div class="muted">Тариф {{ pr.plan_code }}, 30 дней</div>{% endif %}
+    <hr style="border:0;border-top:1px solid var(--border);margin:16px 0">
+    <div class="muted">{{ pr.method.title }}</div>
+    {% if pr.method.details %}
+      <div class="req">{{ pr.method.details }}</div>
+      <button class="btn ghost sm" type="button" data-copy="{{ pr.method.details|replace(' ', '') }}" style="margin-top:8px">Скопировать реквизиты</button>
+      {% if pr.method.holder %}<div class="muted" style="margin-top:6px">Получатель: {{ pr.method.holder }}</div>{% endif %}
+    {% endif %}
+    <p class="hint">В комментарии к переводу можно указать номер заявки {{ pr.uid }}.</p>
+  </div>
+  <div class="card">
+    {% if pr.status.value == 'awaiting_receipt' %}
+      <div class="card-h"><h3>Отправьте чек</h3></div>
+      <p class="muted">После перевода приложите скриншот или файл чека (JPG, PNG, PDF, до 8 МБ). Можно также отправить фото в Telegram-бот.</p>
+      <form method="post" action="/cabinet/payments/{{ pr.id }}/receipt" enctype="multipart/form-data">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input class="input" type="file" name="receipt" accept="image/png,image/jpeg,application/pdf" required>
+        <button class="btn accent" style="margin-top:12px">Отправить на проверку</button>
+      </form>
+      <form method="post" action="/cabinet/payments/{{ pr.id }}/cancel" style="margin-top:12px"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn danger sm">Отменить заявку</button></form>
+    {% elif pr.status.value == 'pending' %}
+      <div class="card-h"><h3>Чек на проверке</h3></div>
+      <p class="muted">Администратор проверит оплату и активирует подписку. Уведомление придёт в Telegram.</p>
+    {% elif pr.status.value == 'approved' %}
+      <div class="card-h"><h3>Оплата подтверждена</h3></div>
+      <p class="muted">Подтверждено {{ pr.reviewed_at|dt }}. Подписка активирована.</p>
+    {% elif pr.status.value == 'rejected' %}
+      <div class="card-h"><h3>Заявка отклонена</h3></div>
+      <p class="muted">{{ pr.reject_reason or 'Причина не указана.' }}</p>
+      <a class="btn ghost" href="/cabinet/subscription">Создать новую заявку</a>
+    {% else %}
+      <div class="card-h"><h3>Заявка отменена</h3></div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,25 @@
+{% extends "cabinet/base.html" %}
+{% block title %}Регистрация предприятия{% endblock %}
+{% block content %}
+<div class="page-title">Добро пожаловать в Furniture Estimate</div>
+<div class="grid g2">
+  <div class="card">
+    <div class="card-h"><h3>Зарегистрируйте предприятие</h3></div>
+    <p class="muted">Предприятие — ваша рабочая область: база материалов, заказы, сотрудники, подписка и аналитика. Данные видны только вам и вашим сотрудникам.</p>
+    <form method="post" action="/cabinet/onboarding">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <div class="field"><label for="name">Название предприятия *</label><input class="input" id="name" name="name" required minlength="2" maxlength="200" placeholder="Мебельный цех «Дуб»"></div>
+      <div class="form-grid" style="margin-top:12px">
+        <div class="field"><label for="phone">Телефон</label><input class="input" id="phone" name="phone" placeholder="+998 90 000 00 00"></div>
+        <div class="field"><label for="address">Адрес</label><input class="input" id="address" name="address" placeholder="Ташкент, ..."></div>
+      </div>
+      <button class="btn accent" style="margin-top:16px">Зарегистрировать</button>
+    </form>
+  </div>
+  <div class="card">
+    <div class="card-h"><h3>Вас пригласили сотрудником?</h3></div>
+    <p class="muted">Откройте ссылку-приглашение от владельца предприятия в Telegram — доступ появится автоматически. Регистрировать своё предприятие не нужно.</p>
+    <a class="btn ghost" href="{{ settings.bot_link }}">Открыть бота</a>
+  </div>
+</div>
+{% endblock %}

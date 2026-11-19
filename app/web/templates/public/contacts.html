@@ -1,0 +1,15 @@
+{% extends "public/base.html" %}
+{% block title %}Контакты — Furniture Estimate{% endblock %}
+{% block content %}
+<section class="hero">
+  <div class="wrap">
+    <div class="label">Контакты</div>
+    <h1 class="display">Мы на связи</h1>
+    <div class="feat-grid">
+      <div class="feat"><h3 class="h3">Telegram-бот</h3><p><a href="{{ settings.bot_link }}">@{{ settings.bot_username }}</a></p></div>
+      <div class="feat"><h3 class="h3">Поддержка</h3><p>{% if settings.support_telegram %}<a href="https://t.me/{{ settings.support_telegram.lstrip('@') }}">{{ settings.support_telegram }}</a>{% else %}Контакт уточняется{% endif %}</p></div>
+      <div class="feat"><h3 class="h3">Телефон и почта</h3><p>{{ settings.support_phone or '—' }}<br>{% if settings.support_email %}<a href="mailto:{{ settings.support_email }}">{{ settings.support_email }}</a>{% endif %}</p></div>
+    </div>
+  </div>
+</section>
+{% endblock %}

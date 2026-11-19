@@ -1,0 +1,50 @@
+{% extends "public/base.html" %}
+{% block title %}Вход — Furniture Estimate{% endblock %}
+{% block content %}
+<section>
+  <div class="wrap">
+    <div class="auth-card">
+      <div class="label">Веб-кабинет</div>
+      <h1 class="h2" style="font-size:28px">Вход через<br>Telegram</h1>
+      <p class="muted">Нажмите кнопку — откроется наш бот. Подтвердите вход, и эта страница сама перейдёт в кабинет.</p>
+      <button class="btn btn-block" id="tg-login" type="button">Войти через Telegram</button>
+      <div class="status" id="status" role="status"></div>
+      {% if settings.telegram_login_widget %}
+      <div style="margin-top:20px">
+        <script async src="https://telegram.org/js/telegram-widget.js?22" data-telegram-login="{{ settings.bot_username }}"
+                data-size="large" data-auth-url="/auth/telegram?next={{ next|urlencode }}" data-request-access="write"></script>
+      </div>
+      {% endif %}
+      <p class="muted" style="font-size:13px;margin-top:24px">Ещё нет аккаунта? Регистрация предприятия занимает минуту — <a href="{{ settings.bot_link }}">начните в боте</a>.</p>
+    </div>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const btn = document.getElementById("tg-login");
+  const status = document.getElementById("status");
+  const next = {{ next|tojson }};
+  let timer = null;
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    status.textContent = "Готовим ссылку…";
+    const r = await fetch("/auth/start", { method: "POST" });
+    if (!r.ok) { status.textContent = "Не удалось начать вход. Обновите страницу."; btn.disabled = false; return; }
+    const { token, poll, link } = await r.json();
+    window.open(link, "_blank", "noopener");
+    status.innerHTML = 'Подтвердите вход в Telegram. Бот не открылся? <a href="' + link + '" target="_blank" rel="noopener">Открыть ссылку</a>';
+    const body = new URLSearchParams({ token, poll });
+    const started = Date.now();
+    timer = setInterval(async () => {
+      if (Date.now() - started > 10 * 60 * 1000) { clearInterval(timer); status.textContent = "Время ожидания истекло. Попробуйте снова."; btn.disabled = false; return; }
+      const res = await fetch("/auth/poll", { method: "POST", body });
+      if (res.status === 410) { clearInterval(timer); status.textContent = "Ссылка устарела. Попробуйте снова."; btn.disabled = false; return; }
+      const data = await res.json().catch(() => ({}));
+      if (data.status === "ok") { clearInterval(timer); status.textContent = "Готово! Переходим в кабинет…"; location.href = next; }
+    }, 2000);
+  });
+})();
+</script>
+{% endblock %}

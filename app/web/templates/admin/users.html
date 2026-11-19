@@ -1,0 +1,18 @@
+{% extends "cabinet/base.html" %}
+{% block title %}Пользователи{% endblock %}
+{% block content %}
+<div class="page-title">Пользователи</div>
+<form class="card row" method="get" style="margin-bottom:16px"><input class="input" name="q" value="{{ q }}" placeholder="Имя, @username, телефон, Telegram ID, реф. код" style="max-width:420px"><button class="btn ghost">Найти</button></form>
+<div class="card"><div class="table-wrap"><table class="t">
+  <thead><tr><th>Пользователь</th><th>Telegram ID</th><th>Реф. код</th><th>Регистрация</th><th>Статус</th><th></th></tr></thead>
+  <tbody>{% for u in items %}
+  <tr><td>{{ u.full_name or '—' }}{% if u.telegram_username %}<div class="muted">@{{ u.telegram_username }}</div>{% endif %}{% if u.is_superadmin %} <span class="badge accent">Суперадмин</span>{% endif %}</td>
+    <td>{{ u.telegram_id }}</td><td>{{ u.referral_code }}</td><td>{{ u.created_at|date }}</td>
+    <td>{% if u.is_blocked %}<span class="badge bad">Заблокирован</span><div class="muted">{{ u.block_reason }}</div>{% else %}<span class="badge good">Активен</span>{% endif %}</td>
+    <td>{% if not u.is_superadmin %}
+      <details><summary class="btn ghost sm">{{ 'Разблокировать' if u.is_blocked else 'Заблокировать' }}</summary>
+        <form method="post" action="/admin/users/{{ u.id }}/block" style="margin-top:6px"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="blocked" value="{{ 0 if u.is_blocked else 1 }}">
+          {% if not u.is_blocked %}<input class="input" name="reason" required placeholder="Причина">{% endif %}
+          <button class="btn {{ 'danger' if not u.is_blocked }} sm" style="margin-top:6px">Подтвердить</button></form></details>{% endif %}</td></tr>
+  {% endfor %}</tbody></table></div></div>
+{% endblock %}

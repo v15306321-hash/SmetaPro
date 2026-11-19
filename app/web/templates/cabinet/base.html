@@ -1,0 +1,100 @@
+{%- set ICONS = {
+  'dashboard': '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
+  'analytics': '<path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/>',
+  'orders': '<path d="M9 4h6a1 1 0 0 1 1 1v1H8V5a1 1 0 0 1 1-1z"/><path d="M16 5h2a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h2"/><path d="M9 12h6M9 16h4"/>',
+  'subscription': '<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h3"/>',
+  'payments': '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>',
+  'staff': '<circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-3.5 3-6 7-6s7 2.5 7 6"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M22 20c0-2.5-1.5-4.5-4-5.5"/>',
+  'referrals': '<path d="M20 12v9H4v-9M2 7h20v5H2zM12 21V7"/><path d="M12 7H8a2.5 2.5 0 0 1 0-5c3 0 4 5 4 5zM12 7h4a2.5 2.5 0 0 0 0-5c-3 0-4 5-4 5z"/>',
+  'profile': '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/>',
+  'users': '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.5-7 8-7s8 3 8 7"/>',
+  'enterprises': '<path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/>',
+  'plans': '<path d="M12 2 2 7l10 5 10-5z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/>',
+  'audit': '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/>',
+  'bot': '<path d="M21 4 3 11l6 2 2 6 3-4 5 4z"/>',
+  'logout': '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
+} -%}
+{%- macro icon(name) -%}<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ ICONS[name]|safe }}</svg>{%- endmacro -%}
+{%- if admin_mode -%}
+  {%- set NAV = [('dashboard','/admin','Обзор'),('payments','/admin/payments','Заявки на оплату'),('users','/admin/users','Пользователи'),('enterprises','/admin/enterprises','Предприятия'),('plans','/admin/plans','Тарифы и реквизиты'),('referrals','/admin/referrals','Рефералы'),('audit','/admin/audit','Журнал')] -%}
+{%- else -%}
+  {%- set NAV = [('dashboard','/cabinet','Обзор')] -%}
+  {%- if ctx and ctx.can('analytics.view') %}{% set NAV = NAV + [('analytics','/cabinet/analytics','Аналитика')] %}{% endif -%}
+  {%- if ctx and ctx.can('orders.view') %}{% set NAV = NAV + [('orders','/cabinet/orders','Заказы и сметы')] %}{% endif -%}
+  {%- if ctx and ctx.can('billing.manage') %}{% set NAV = NAV + [('subscription','/cabinet/subscription','Подписка'),('payments','/cabinet/payments','Платежи')] %}{% endif -%}
+  {%- if ctx and ctx.can('staff.view') %}{% set NAV = NAV + [('staff','/cabinet/staff','Сотрудники')] %}{% endif -%}
+  {%- set NAV = NAV + [('referrals','/cabinet/referrals','Пригласить друга'),('profile','/cabinet/profile','Профиль и настройки')] -%}
+{%- endif -%}
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>{% block title %}Кабинет{% endblock %} — Furniture Estimate</title>
+  <link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <a class="brand" href="/"><span class="brand-mark">{% include "partials/logo.svg" %}</span>Furniture Estimate</a>
+    {% for key, href, title in NAV %}
+      <a class="nav-item {{ 'active' if section == key }}" href="{{ href }}">{{ icon(key) }}{{ title }}
+        {% if section == key %}<span class="badge-mini">Активно</span>{% endif %}</a>
+    {% endfor %}
+    <div class="spacer"></div>
+    <div class="side-foot">
+      {% if user and user.is_superadmin %}
+        {% if admin_mode %}<a class="nav-item" href="/cabinet">{{ icon('dashboard') }}Мой кабинет</a>
+        {% else %}<a class="nav-item" href="/admin">{{ icon('plans') }}Админ-панель</a>{% endif %}
+      {% endif %}
+      <a class="nav-item" href="{{ settings.bot_link }}" rel="noopener">{{ icon('bot') }}Открыть бота</a>
+      <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="nav-item" style="all:unset;display:flex;gap:10px;align-items:center;padding:9px 10px;cursor:pointer;color:var(--ink-2);font-weight:500">{{ icon('logout') }}Выйти</button></form>
+    </div>
+  </aside>
+  <div class="main">
+    <header class="top">
+      <div class="crumb">
+        {% if admin_mode %}Администрирование<small>платформа Furniture Estimate</small>
+        {% elif ctx and ctx.enterprise %}{{ ctx.enterprise.name }}<small>{% block subtitle %}{% endblock %}</small>{% endif %}
+      </div>
+      <div class="right">
+        {% if not admin_mode and memberships and memberships|length > 1 %}
+          <form method="post" action="/cabinet/switch" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}">
+            <select class="input" name="enterprise_id" onchange="this.form.submit()" aria-label="Предприятие" style="padding:6px 10px">
+              {% for m in memberships %}<option value="{{ m.enterprise_id }}" {{ 'selected' if ctx.enterprise and m.enterprise_id == ctx.enterprise.id }}>{{ m.enterprise.name }}</option>{% endfor %}
+            </select></form>
+        {% endif %}
+        {% if not admin_mode and usage and usage.subscription %}
+          <span class="chip">Тариф {{ usage.plan.title }} · до {{ usage.subscription.ends_at|date }}</span>
+        {% elif not admin_mode and ctx and ctx.enterprise %}
+          <span class="badge bad">Нет активной подписки</span>
+        {% endif %}
+        <div class="avatar" aria-hidden="true">{{ (user.full_name or 'U')[:1]|upper }}</div>
+        <div class="who">{{ user.full_name or user.telegram_username or 'Пользователь' }}
+          <small>{% if admin_mode %}Суперадмин{% elif ctx and ctx.role %}{{ ROLE_TITLES[ctx.role] }}{% endif %}</small></div>
+      </div>
+    </header>
+    <nav class="mobile-nav">
+      {% for key, href, title in NAV %}<a class="{{ 'active' if section == key }}" href="{{ href }}">{{ title }}</a>{% endfor %}
+    </nav>
+    <div class="content">
+      {% if flash %}<div class="flash ok" role="status">{{ flash }}</div>{% endif %}
+      {% if flash_error %}<div class="flash err" role="alert">{{ flash_error }}</div>{% endif %}
+      {% block content %}{% endblock %}
+    </div>
+  </div>
+</div>
+{% block scripts %}{% endblock %}
+<script>
+document.querySelectorAll("[data-copy]").forEach(el => el.addEventListener("click", () => {
+  navigator.clipboard.writeText(el.dataset.copy).then(() => { const t = el.textContent; el.textContent = "Скопировано"; setTimeout(() => el.textContent = t, 1400); });
+}));
+</script>
+</body>
+</html>

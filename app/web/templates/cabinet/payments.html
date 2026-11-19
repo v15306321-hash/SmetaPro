@@ -1,0 +1,18 @@
+{% extends "cabinet/base.html" %}
+{% from "cabinet/_widgets.html" import pay_badge with context %}
+{% block title %}Платежи{% endblock %}
+{% block content %}
+<div class="page-title">История платежей</div>
+<div class="card">
+  {% if payments %}
+  <div class="table-wrap"><table class="t">
+    <thead><tr><th>Заявка</th><th>Дата</th><th>Тариф</th><th>Способ</th><th class="num">Сумма</th><th>Статус</th></tr></thead>
+    <tbody>{% for p in payments %}
+      <tr><td><a href="/cabinet/payments/{{ p.id }}">{{ p.uid }}</a></td><td>{{ p.created_at|dt }}</td><td>{{ p.plan_code }}</td><td>{{ p.method.title }}</td>
+        <td class="num">{{ p.amount|money }}{% if p.discount_percent %}<div class="muted">скидка {{ p.discount_percent }}%</div>{% endif %}</td>
+        <td>{{ pay_badge(p.status, STATUS_TITLES) }}{% if p.reject_reason %}<div class="muted">{{ p.reject_reason }}</div>{% endif %}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+  {% else %}<div style="text-align:center;padding:30px" class="muted">Платежей пока нет.</div>{% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,7 @@
+{% extends "cabinet/base.html" %}
+{% from "cabinet/_widgets.html" import locked with context %}
+{% block title %}{{ FEATURE_TITLES.get(feature, 'Функция') }}{% endblock %}
+{% block content %}
+<div class="page-title">{{ FEATURE_TITLES.get(feature, 'Функция') }}</div>
+{{ locked('Недоступно на текущем тарифе', message, min_plan if ctx.can('billing.manage') else None) }}
+{% endblock %}

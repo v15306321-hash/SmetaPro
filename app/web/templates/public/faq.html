@@ -1,0 +1,19 @@
+{% extends "public/base.html" %}
+{% block title %}FAQ и помощь — Furniture Estimate{% endblock %}
+{% block content %}
+<section class="hero">
+  <div class="wrap">
+    <div class="label">Помощь</div>
+    <h1 class="display">Частые вопросы</h1>
+    <div class="faq">
+      {% for q, a in faq %}<details {{ 'open' if loop.first }}><summary>{{ q }}</summary><p>{{ a }}</p></details>{% endfor %}
+    </div>
+    <h2 class="h2" style="margin-top:48px">Инструкции</h2>
+    <div class="feat-grid">
+      <div class="feat"><h3 class="h3">Добавить материал</h3><p>Бот → «📦 Материалы» → «➕ Добавить». Укажите тип, категорию, название, единицу и цену.</p></div>
+      <div class="feat"><h3 class="h3">Создать смету</h3><p>Бот → «🧮 Новый расчёт». Добавьте позиции, проверьте итог и нажмите «📄 PDF-смета».</p></div>
+      <div class="feat"><h3 class="h3">Пригласить сотрудника</h3><p>Кабинет → «Сотрудники» → «Создать приглашение». Отправьте ссылку сотруднику — он откроет её в Telegram.</p></div>
+    </div>
+  </div>
+</section>
+{% endblock %}

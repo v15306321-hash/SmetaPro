@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Furniture Estimate — сметы и учёт для мебельных производств{% endblock %}</title>
+  <meta name="description" content="{% block description %}Расчёт стоимости мебельных заказов, PDF-сметы, производственные затраты и финансовая аналитика для мастерских и фабрик. Работает в Telegram.{% endblock %}">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="{{ self.title() }}">
+  <meta property="og:description" content="{{ self.description() }}">
+  <meta property="og:url" content="{{ settings.base_url }}{{ request.url.path }}">
+  <meta property="og:image" content="{{ settings.base_url }}/static/img/og.png">
+  <meta name="theme-color" content="#121110">
+  <link rel="canonical" href="{{ settings.base_url }}{{ request.url.path }}">
+  <link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Unbounded:wght@700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/site.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="/">
+      <span class="brand-mark">{% include "partials/logo.svg" %}</span>
+      Furniture Estimate
+    </a>
+    <button class="menu-toggle" aria-expanded="false" aria-controls="nav" onclick="const n=document.getElementById('nav');n.classList.toggle('open');this.setAttribute('aria-expanded',n.classList.contains('open'))">Меню</button>
+    <nav class="nav" id="nav">
+      <a href="/features" class="{{ 'active' if page=='features' }}">Возможности</a>
+      <a href="/pricing" class="{{ 'active' if page=='pricing' }}">Тарифы</a>
+      <a href="/how-it-works" class="{{ 'active' if page=='how' }}">Как это работает</a>
+      <a href="/faq" class="{{ 'active' if page=='faq' }}">FAQ</a>
+      <a href="/contacts" class="{{ 'active' if page=='contacts' }}">Контакты</a>
+    </nav>
+    <div class="header-cta">
+      {% if user %}
+        <a class="btn btn-sm" href="/cabinet">Кабинет</a>
+      {% else %}
+        <a class="btn btn-ghost btn-sm" href="/login">Войти</a>
+        <a class="btn btn-sm" href="{{ settings.bot_link }}" rel="noopener">Открыть бота</a>
+      {% endif %}
+    </div>
+  </div>
+</header>
+<main>
+{% block content %}{% endblock %}
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <div>© Furniture Estimate · Ташкент, Узбекистан</div>
+    <nav>
+      <a href="/legal/terms">Пользовательское соглашение</a>
+      <a href="/legal/privacy">Политика конфиденциальности</a>
+      <a href="/legal/subscription">Условия подписки</a>
+      <a href="/contacts">Поддержка</a>
+    </nav>
+  </div>
+</footer>
+{% block scripts %}{% endblock %}
+</body>
+</html>

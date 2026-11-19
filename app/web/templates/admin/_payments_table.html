@@ -1,0 +1,33 @@
+{% set rows = items if items is defined else pending %}
+{% set PST = {'awaiting_receipt': ('Ожидает чек', 'warn'), 'pending': ('На проверке', 'info'), 'approved': ('Подтверждена', 'good'), 'rejected': ('Отклонена', 'bad'), 'cancelled': ('Отменена', '')} %}
+<div class="table-wrap"><table class="t">
+  <thead><tr><th>Заявка</th><th>Предприятие / пользователь</th><th>Тариф</th><th class="num">Сумма</th><th>Способ</th><th>Чек</th><th>Статус</th><th></th></tr></thead>
+  <tbody>{% for p in rows %}
+  <tr>
+    <td><b>{{ p.uid }}</b><div class="muted">{{ p.created_at|dt }}</div></td>
+    <td>{{ p.enterprise.name }}<div class="muted">{{ p.user.full_name }} · TG {{ p.user.telegram_id }}</div></td>
+    <td>{{ p.plan_code }}</td>
+    <td class="num">{{ p.amount|money }}{% if p.discount_percent %}<div class="muted">−{{ p.discount_percent }}% от {{ p.base_amount|money }}</div>{% endif %}</td>
+    <td>{{ p.method.title }}</td>
+    <td>{% if p.receipt_path or p.receipt_file_id %}<a href="/admin/payments/{{ p.id }}/receipt" target="_blank" rel="noopener">Открыть</a>{% else %}—{% endif %}</td>
+    <td><span class="badge {{ PST[p.status.value][1] }}">{{ PST[p.status.value][0] }}</span>{% if p.refunded %} <span class="badge bad">Возврат</span>{% endif %}
+      {% if p.reject_reason %}<div class="muted">{{ p.reject_reason }}</div>{% endif %}</td>
+    <td style="min-width:220px">
+      {% if p.status.value == 'pending' %}
+        <form method="post" action="/admin/payments/{{ p.id }}/approve" class="inline" onsubmit="return confirm('Подтвердить оплату {{ p.uid }} на {{ p.amount|money }}?')"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn sm">Подтвердить</button></form>
+      {% endif %}
+      {% if p.status.value in ('pending', 'awaiting_receipt') %}
+        <details style="display:inline-block"><summary class="btn danger sm">Отклонить</summary>
+          <form method="post" action="/admin/payments/{{ p.id }}/reject" style="margin-top:6px"><input type="hidden" name="csrf" value="{{ csrf }}">
+            <input class="input" name="reason" placeholder="Причина (будет отправлена пользователю)"><button class="btn danger sm" style="margin-top:6px">Отклонить заявку</button></form></details>
+      {% endif %}
+      {% if p.status.value == 'approved' and not p.refunded %}
+        <details><summary class="btn ghost sm">Отметить возврат</summary>
+          <form method="post" action="/admin/payments/{{ p.id }}/refund" style="margin-top:6px"><input type="hidden" name="csrf" value="{{ csrf }}">
+            <input class="input" name="reason" required placeholder="Причина возврата"><button class="btn danger sm" style="margin-top:6px">Подтвердить возврат</button>
+            <div class="hint">Подписка этой оплаты будет прекращена, неиспользованный реферальный бонус — аннулирован.</div></form></details>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}</tbody>
+</table></div>

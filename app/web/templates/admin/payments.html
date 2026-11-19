@@ -1,0 +1,11 @@
+{% extends "cabinet/base.html" %}
+{% block title %}Заявки на оплату{% endblock %}
+{% block content %}
+<div class="page-title">Заявки на оплату</div>
+<div class="row" style="margin-bottom:16px">
+  {% for key, title in [('pending','На проверке'),('awaiting_receipt','Ожидают чек'),('approved','Подтверждённые'),('rejected','Отклонённые'),('all','Все')] %}
+    <a class="btn {{ '' if status == key else 'ghost' }} sm" href="?status={{ key }}">{{ title }}</a>
+  {% endfor %}
+</div>
+<div class="card">{% if items %}{% include "admin/_payments_table.html" %}{% else %}<p class="muted">Заявок нет.</p>{% endif %}</div>
+{% endblock %}

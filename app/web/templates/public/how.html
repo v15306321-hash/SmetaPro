@@ -1,0 +1,21 @@
+{% extends "public/base.html" %}
+{% block title %}Как это работает — Furniture Estimate{% endblock %}
+{% block content %}
+<section class="hero">
+  <div class="wrap">
+    <div class="label">Как это работает</div>
+    <h1 class="display">Четыре шага<br>до первой сметы</h1>
+    <div class="steps">
+      <div class="stepc"><h3 class="h3">Регистрация</h3><p>Откройте бота, нажмите «Старт» и укажите название, телефон и адрес предприятия.</p></div>
+      <div class="stepc"><h3 class="h3">Оплата тарифа</h3><p>Выберите тариф и способ оплаты, переведите сумму и отправьте фото чека. После проверки подписка активируется.</p></div>
+      <div class="stepc"><h3 class="h3">Настройка</h3><p>Задайте наценки и заполните базу материалов и фурнитуры с ценами.</p></div>
+      <div class="stepc"><h3 class="h3">Расчёт заказа</h3><p>Создайте заказ, добавьте позиции и размеры — и отправьте клиенту PDF-смету.</p></div>
+    </div>
+    <div class="panel" style="margin-top:32px">
+      <h2 class="h3">Сайт и бот — одна система</h2>
+      <p class="muted">Предприятие, сотрудники, подписка, платежи и рефералы хранятся централизованно. Изменения в боте сразу видны в веб-кабинете. Войти на сайт можно подтверждением в Telegram — без паролей.</p>
+      <a class="btn" href="{{ settings.bot_link }}" rel="noopener">Открыть бота</a>
+    </div>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,25 @@
+{% extends "cabinet/base.html" %}
+{% block title %}Предприятия{% endblock %}
+{% block content %}
+<div class="page-title">Предприятия</div>
+<form class="card row" method="get" style="margin-bottom:16px"><input class="input" name="q" value="{{ q }}" placeholder="Название или телефон" style="max-width:420px"><button class="btn ghost">Найти</button></form>
+<div class="card"><div class="table-wrap"><table class="t">
+  <thead><tr><th>Предприятие</th><th>Владелец</th><th>Подписка</th><th class="num">Польз.</th><th>Статус</th><th></th></tr></thead>
+  <tbody>{% for e in items %}{% set s = subs[e.id] %}
+  <tr><td><b>{{ e.name }}</b><div class="muted">{{ e.phone or '' }} · с {{ e.created_at|date }}</div></td>
+    <td>{{ e.owner.full_name }}<div class="muted">TG {{ e.owner.telegram_id }}</div></td>
+    <td>{% if s %}<span class="badge good">{{ s.plan_code }}</span><div class="muted">до {{ s.ends_at|date }} · смет {{ s.estimates_used }}/{{ s.plan.estimates_limit }}</div>{% else %}<span class="badge">нет</span>{% endif %}</td>
+    <td class="num">{{ counts[e.id] }}</td>
+    <td>{% if e.is_blocked %}<span class="badge bad">Заблокировано</span><div class="muted">{{ e.block_reason }}</div>{% else %}<span class="badge good">Активно</span>{% endif %}</td>
+    <td style="min-width:200px">
+      <details><summary class="btn ghost sm">Действия</summary>
+        <form method="post" action="/admin/enterprises/{{ e.id }}/block" style="margin-top:6px"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="blocked" value="{{ 0 if e.is_blocked else 1 }}">
+          {% if not e.is_blocked %}<input class="input" name="reason" required placeholder="Причина блокировки">{% endif %}
+          <button class="btn {{ 'danger' if not e.is_blocked }} sm" style="margin-top:6px">{{ 'Разблокировать' if e.is_blocked else 'Заблокировать' }}</button></form>
+        <form method="post" action="/admin/enterprises/{{ e.id }}/grant" style="margin-top:10px"><input type="hidden" name="csrf" value="{{ csrf }}">
+          <select class="input" name="plan">{% for p in plans %}<option>{{ p.code }}</option>{% endfor %}</select>
+          <input class="input" name="reason" required placeholder="Причина ручной активации" style="margin-top:6px">
+          <button class="btn sm" style="margin-top:6px">Активировать без оплаты</button></form>
+      </details></td></tr>
+  {% endfor %}</tbody></table></div></div>
+{% endblock %}

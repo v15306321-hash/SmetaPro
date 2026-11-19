@@ -1,0 +1,28 @@
+{% extends "public/base.html" %}
+{% block title %}{{ 'Не найдено' if code == 404 else 'Ошибка' }} — Furniture Estimate{% endblock %}
+{% block content %}
+<section>
+  <div class="wrap">
+    <div class="auth-card">
+      {% if error in ('feature_unavailable', 'subscription_required') %}
+        <div class="label">Тариф</div><h1 class="h2" style="font-size:26px">Функция недоступна</h1>
+      {% elif error in ('forbidden', 'blocked') %}
+        <div class="label">Доступ</div><h1 class="h2" style="font-size:26px">Нет доступа</h1>
+      {% elif error == 'limit_reached' %}
+        <div class="label">Лимит</div><h1 class="h2" style="font-size:26px">Лимит тарифа</h1>
+      {% elif code == 404 %}
+        <div class="label">404</div><h1 class="h2" style="font-size:26px">Не найдено</h1>
+      {% else %}
+        <div class="label">Ошибка</div><h1 class="h2" style="font-size:26px">Не получилось</h1>
+      {% endif %}
+      <p class="muted">{{ message }}</p>
+      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:18px">
+        {% if error in ('feature_unavailable', 'subscription_required', 'limit_reached') %}
+          <a class="btn" href="/cabinet/subscription">Выбрать тариф</a>
+        {% endif %}
+        <a class="btn btn-ghost" href="/cabinet">В кабинет</a>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

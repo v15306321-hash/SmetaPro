@@ -1,0 +1,18 @@
+{% extends "cabinet/base.html" %}
+{% block title %}Рефералы{% endblock %}
+{% block content %}
+<div class="page-title">Реферальные связи</div>
+{% set ST = {'registered': ('Без оплаты', ''), 'qualified': ('Засчитан', 'good'), 'used': ('Использован', 'info'), 'annulled': ('Аннулирован', 'bad')} %}
+<div class="card"><div class="table-wrap"><table class="t">
+  <thead><tr><th>Пригласивший</th><th>Приглашённый</th><th>Предприятие</th><th>Первая оплата</th><th>Статус</th><th></th></tr></thead>
+  <tbody>{% for r in items %}
+  <tr><td>{{ r.referrer.full_name }}<div class="muted">TG {{ r.referrer.telegram_id }}</div></td>
+    <td>{{ r.referred_user.full_name }}<div class="muted">TG {{ r.referred_user.telegram_id }} · {{ r.created_at|date }}</div></td>
+    <td>{{ r.referred_enterprise.name if r.referred_enterprise else '—' }}{% if r.suspicious %} <span class="badge warn" title="{{ r.note }}">Подозрительно</span>{% endif %}</td>
+    <td>{{ r.qualified_at|dt }}</td>
+    <td><span class="badge {{ ST[r.status.value][1] }}">{{ ST[r.status.value][0] }}</span>{% if r.note %}<div class="muted">{{ r.note }}</div>{% endif %}</td>
+    <td>{% if r.status.value in ('registered', 'qualified') %}
+      <details><summary class="btn danger sm">Аннулировать</summary>
+        <form method="post" action="/admin/referrals/{{ r.id }}/annul" style="margin-top:6px"><input type="hidden" name="csrf" value="{{ csrf }}"><input class="input" name="reason" required placeholder="Причина"><button class="btn danger sm" style="margin-top:6px">Подтвердить</button></form></details>{% endif %}</td></tr>
+  {% else %}<tr><td colspan="6" class="muted">Пока нет.</td></tr>{% endfor %}</tbody></table></div></div>
+{% endblock %}

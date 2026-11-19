@@ -1,0 +1,63 @@
+{% extends "cabinet/base.html" %}
+{% block title %}Сотрудники{% endblock %}
+{% block content %}
+<div class="page-title">Сотрудники
+  {% if usage.subscription %}<span class="chip">{{ usage.users }} из {{ usage.users_limit }} мест</span>{% endif %}
+</div>
+{% if invite_link %}
+<div class="card" style="margin-bottom:16px;border-color:var(--accent)">
+  <div class="card-h"><h3>Ссылка-приглашение готова</h3><span class="more">действует 3 дня, одноразовая</span></div>
+  <div class="row"><code style="word-break:break-all">{{ invite_link }}</code><button class="btn ghost sm" type="button" data-copy="{{ invite_link }}">Скопировать</button></div>
+  <p class="hint">Отправьте ссылку сотруднику — он откроет её в Telegram и получит доступ.</p>
+</div>
+{% endif %}
+<div class="grid g3">
+  <div class="card span2">
+    <div class="card-h"><h3>Команда</h3></div>
+    <div class="table-wrap"><table class="t">
+      <thead><tr><th>Сотрудник</th><th>Роль</th><th>С нами с</th>{% if ctx.can('staff.manage') %}<th></th>{% endif %}</tr></thead>
+      <tbody>{% for m in members %}
+        <tr><td>{{ m.user.full_name or '—' }}{% if m.user.telegram_username %}<div class="muted">@{{ m.user.telegram_username }}</div>{% endif %}</td>
+          <td><span class="badge {{ 'accent' if m.role.value == 'owner' }}">{{ ROLE_TITLES[m.role] }}</span></td>
+          <td>{{ m.created_at|date }}</td>
+          {% if ctx.can('staff.manage') %}<td>
+            {% if m.role.value != 'owner' %}
+            <details><summary class="btn ghost sm">Изменить</summary>
+              <form method="post" action="/cabinet/staff/{{ m.id }}/role" style="margin-top:10px">
+                <input type="hidden" name="csrf" value="{{ csrf }}">
+                <select class="input" name="role">{% for r in [Role.admin, Role.master, Role.manager] %}<option value="{{ r.value }}" {{ 'selected' if m.role == r }}>{{ ROLE_TITLES[r] }}</option>{% endfor %}</select>
+                <div class="hint">Права администратора:</div>
+                {% for p, title in ALL_PERMISSIONS.items() %}<label style="display:block;font-size:13px"><input type="checkbox" name="perm" value="{{ p }}" {{ 'checked' if (m.permissions is none and m.role.value == 'admin') or (m.permissions and p in m.permissions) }}> {{ title }}</label>{% endfor %}
+                <button class="btn sm" style="margin-top:8px">Сохранить</button>
+              </form>
+              <form method="post" action="/cabinet/staff/{{ m.id }}/remove" style="margin-top:6px" onsubmit="return confirm('Отозвать доступ сотрудника?')"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn danger sm">Отозвать доступ</button></form>
+            </details>
+            {% endif %}
+          </td>{% endif %}</tr>
+      {% endfor %}</tbody>
+    </table></div>
+  </div>
+  <div class="card">
+    <div class="card-h"><h3>Пригласить</h3></div>
+    {% if ctx.can('staff.manage') %}
+      {% if usage.subscription and usage.users < usage.users_limit %}
+      <form method="post" action="/cabinet/staff/invite">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <div class="field"><label for="role">Роль</label>
+          <select class="input" id="role" name="role"><option value="manager">Менеджер — заказы и сметы</option><option value="master">Мастер — производство, статусы, расход</option><option value="admin">Администратор — права по выбору владельца</option></select></div>
+        <button class="btn accent" style="margin-top:12px">Создать приглашение</button>
+      </form>
+      {% elif usage.subscription %}
+        <p class="muted">Все места тарифа {{ usage.plan.title }} заняты ({{ usage.users_limit }}, включая владельца).</p>
+        <a class="btn accent" href="/cabinet/subscription">Перейти на тариф выше</a>
+      {% else %}
+        <p class="muted">Нужна активная подписка.</p>
+      {% endif %}
+      {% if invitations %}<div class="hint" style="margin-top:16px">Ожидают принятия:</div>
+        {% for i in invitations %}<div class="row" style="justify-content:space-between;margin-top:6px"><span>{{ ROLE_TITLES[i.role] }} · до {{ i.expires_at|date }}</span>
+          <form method="post" action="/cabinet/staff/invitations/{{ i.id }}/revoke" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn ghost sm">Отозвать</button></form></div>{% endfor %}
+      {% endif %}
+    {% else %}<p class="muted">Управлять сотрудниками может владелец предприятия.</p>{% endif %}
+  </div>
+</div>
+{% endblock %}

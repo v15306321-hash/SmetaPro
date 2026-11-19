@@ -1,0 +1,28 @@
+{% extends "cabinet/base.html" %}
+{% block title %}Админ-панель{% endblock %}
+{% block content %}
+<div class="page-title">Обзор платформы</div>
+<div class="grid g4">
+  <div class="card kpi"><div class="label">Пользователи</div><div class="value">{{ stats.users }}</div><div class="vs">предприятий: {{ stats.enterprises }}</div></div>
+  <div class="card kpi"><div class="label">Активные подписки</div><div class="value">{{ stats.active_total }}</div><div class="vs">{% for p in plans %}{{ p.code }}: {{ stats.active_by_plan.get(p.code, 0) }}{{ ' · ' if not loop.last }}{% endfor %}</div></div>
+  <div class="card kpi"><div class="label">Оплаты за 30 дней</div><div class="value">{{ stats.revenue_30|money }}</div><div class="vs">подтверждённые, без возвратов</div></div>
+  <div class="card kpi"><div class="label">Ждут проверки {% if stats.pending_payments %}<span class="delta down">{{ stats.pending_payments }}</span>{% endif %}</div><div class="value">{{ stats.pending_payments }}</div><div class="vs"><a href="/admin/payments">Открыть заявки →</a></div></div>
+</div>
+<div class="grid g3" style="margin-top:16px">
+  <div class="card span2">
+    <div class="card-h"><h3>Регистрации за 30 дней</h3></div>
+    {% if stats.registrations %}
+    <div class="chart-box" style="height:220px"><canvas data-bars='{{ {"labels": stats.registrations|map(attribute=0)|list, "values": stats.registrations|map(attribute=1)|list}|tojson }}' data-unit="польз." role="img" aria-label="Регистрации по дням"></canvas></div>
+    {% else %}<p class="muted">Нет регистраций за период.</p>{% endif %}
+  </div>
+  <div class="card">
+    <div class="card-h"><h3>Использование за 30 дней</h3></div>
+    <dl class="dl"><dt>Заказов создано</dt><dd>{{ stats.orders_30 }}</dd><dt>Смет сформировано</dt><dd>{{ stats.estimates_30 }}</dd><dt>Засчитано рефералов</dt><dd>{{ stats.referrals_qualified }}</dd></dl>
+  </div>
+</div>
+<div class="card" style="margin-top:16px">
+  <div class="card-h"><h3>Заявки на проверке</h3><a class="more" href="/admin/payments">Все →</a></div>
+  {% if pending %}{% include "admin/_payments_table.html" %}{% else %}<p class="muted">Новых заявок нет.</p>{% endif %}
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/vendor/chart.umd.min.js"></script><script src="/static/js/charts.js"></script>{% endblock %}

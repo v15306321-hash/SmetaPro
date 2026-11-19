@@ -1,0 +1,82 @@
+{% extends "cabinet/base.html" %}
+{% from "cabinet/_widgets.html" import kpi, limits, status_badge, locked with context %}
+{% block title %}Обзор{% endblock %}
+{% block subtitle %}Панель управления{% endblock %}
+{% block content %}
+{% set MONTHS = ['январь','февраль','март','апрель','май','июнь','июль','август','сентябрь','октябрь','ноябрь','декабрь'] %}
+<div class="page-title">
+  {% if analytics_on %}Обзор · {{ MONTHS[period[0].month - 1]|capitalize }} {{ period[0].year }}{% else %}Обзор{% endif %}
+  <div class="actions">
+    {% if analytics_on %}<a class="btn ghost" href="/cabinet/analytics">Подробная аналитика</a>{% endif %}
+    <a class="btn accent" href="{{ settings.bot_link }}" rel="noopener">Новый расчёт в боте</a>
+  </div>
+</div>
+
+{% if analytics_on %}
+  {% set s, p = summary, prev %}
+  <div class="grid g4">
+    {{ kpi('Выручка', s.revenue|money0, s.revenue, p.revenue, spark.revenue, 's1', True, 'расчётная, к прошлому месяцу') }}
+    {{ kpi('Материалы и фурнитура', s.materials_and_hardware|money0, s.materials_and_hardware, p.materials_and_hardware, spark.materials, 's1', False, 'себестоимость, к прошлому месяцу') }}
+    {{ kpi('Работы цеха', s.cost_works|money0, s.cost_works, p.cost_works, spark.works, 's3', False, 'себестоимость, к прошлому месяцу') }}
+    {{ kpi('Расчётная маржа', (s.result_margin|string|replace('.', ',')) ~ '%', s.result_margin, p.result_margin, None, 's1', True, 'фин. результат ' ~ (s.result|money0), True) }}
+  </div>
+
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card">
+      <div class="card-h"><h3>Затраты на материалы по категориям</h3><span class="more">текущий месяц</span></div>
+      {% if materials %}
+        <div class="chart-box"><canvas data-bars='{{ {"labels": materials|map(attribute=0)|list, "values": materials|map(attribute=1)|list}|tojson }}' role="img" aria-label="Затраты на материалы по категориям"></canvas></div>
+      {% else %}<div class="card empty" style="border:0">Пока нет заказов с материалами в этом месяце</div>{% endif %}
+    </div>
+    <div class="card">
+      <div class="card-h"><h3>Маржинальность по изделиям</h3><span class="more">%, текущий месяц</span></div>
+      {% if margins %}
+        <div class="chart-box"><canvas data-bars='{{ {"labels": margins|map(attribute=0)|list, "values": margins|map(attribute=1)|list}|tojson }}' data-unit="%" data-color="s3" role="img" aria-label="Маржинальность по изделиям"></canvas></div>
+      {% else %}<div class="card empty" style="border:0">Данные появятся после первых заказов</div>{% endif %}
+    </div>
+  </div>
+
+  <div class="grid g3" style="margin-top:16px">
+    <div class="card span2">
+      <div class="card-h"><h3>Динамика выручки и затрат</h3><span class="more">7 месяцев</span></div>
+      <div class="legend"><span><i style="background:var(--series-1)"></i>Выручка</span><span><i style="background:var(--series-2)"></i>Себестоимость + произв. затраты</span></div>
+      <div class="chart-box"><canvas data-lines='{{ {"labels": series.labels, "series": [{"label": "Выручка", "data": series.revenue}, {"label": "Затраты", "data": series.costs}]}|tojson }}' role="img" aria-label="Выручка и затраты по месяцам"></canvas></div>
+    </div>
+    {{ limits(usage) }}
+  </div>
+{% else %}
+  <div class="grid g3">
+    <div class="span2">{{ locked('Финансовая аналитика', 'Выручка, себестоимость, валовая прибыль и производственные затраты — на тарифах BUSINESS, PRO и ENTERPRISE.', analytics_plan if ctx.can('billing.manage') else None) }}</div>
+    {{ limits(usage) }}
+  </div>
+{% endif %}
+
+<div class="grid g3" style="margin-top:16px">
+  <div class="card span2">
+    <div class="card-h"><h3>Последние заказы</h3><a class="more" href="/cabinet/orders">Все заказы →</a></div>
+    {% if recent_orders %}
+    <div class="table-wrap"><table class="t">
+      <thead><tr><th>№</th><th>Клиент / изделие</th><th>Статус</th><th class="num">Себестоимость</th><th class="num">Цена</th></tr></thead>
+      <tbody>{% for o in recent_orders %}
+        <tr><td><a href="/cabinet/orders/{{ o.id }}">{{ o.number }}</a></td>
+            <td>{{ o.client_name or '—' }}<div class="muted">{{ o.title }}</div></td>
+            <td>{{ status_badge(o.status) }}</td>
+            <td class="num">{{ o.cost_total|money }}</td><td class="num"><b>{{ o.price_total|money }}</b></td></tr>
+      {% endfor %}</tbody>
+    </table></div>
+    {% else %}<div class="card empty" style="border:0">Заказов пока нет. Создайте первый расчёт в Telegram-боте.</div>{% endif %}
+  </div>
+  <div class="card">
+    <div class="card-h"><h3>Последние сметы</h3></div>
+    {% if recent_estimates %}
+      <table class="t"><tbody>{% for e in recent_estimates %}
+        <tr><td><a href="/cabinet/estimates/{{ e.uid }}.pdf">{{ e.uid }}</a><div class="muted">{{ e.created_at|dt }}</div></td><td class="num">{{ e.total|money }}</td></tr>
+      {% endfor %}</tbody></table>
+    {% else %}<p class="muted">Сформированные PDF-сметы появятся здесь.</p>{% endif %}
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/vendor/chart.umd.min.js"></script>
+<script src="/static/js/charts.js"></script>
+{% endblock %}

@@ -1,0 +1,67 @@
+{% extends "cabinet/base.html" %}
+{% block title %}Профиль{% endblock %}
+{% block content %}
+{% set e = ctx.enterprise %}
+{% set editable = ctx.can('settings.edit') %}
+<div class="page-title">Профиль и настройки</div>
+<div class="grid g2">
+  <div class="card">
+    <div class="card-h"><h3>Предприятие</h3><span class="more">данные для PDF-смет</span></div>
+    <form method="post" action="/cabinet/profile/enterprise">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <fieldset style="border:0;padding:0;margin:0" {{ 'disabled' if not editable }}>
+      <div class="form-grid">
+        <div class="field" style="grid-column:1/-1"><label for="name">Название</label><input class="input" id="name" name="name" value="{{ e.name }}" required></div>
+        <div class="field"><label for="phone">Телефон</label><input class="input" id="phone" name="phone" value="{{ e.phone or '' }}"></div>
+        <div class="field"><label for="email">E-mail</label><input class="input" id="email" name="email" type="email" value="{{ e.email or '' }}"></div>
+        <div class="field" style="grid-column:1/-1"><label for="address">Адрес</label><input class="input" id="address" name="address" value="{{ e.address or '' }}"></div>
+        <div class="field"><label for="tax_id">ИНН</label><input class="input" id="tax_id" name="tax_id" value="{{ e.tax_id or '' }}"></div>
+        <div class="field"><label for="fal">Название доп. суммы в смете</label><input class="input" id="fal" name="fixed_addition_label" value="{{ e.fixed_addition_label }}"></div>
+      </div>
+      {% if editable %}<button class="btn" style="margin-top:14px">Сохранить</button>{% endif %}
+      </fieldset>
+    </form>
+  </div>
+  <div class="card">
+    <div class="card-h"><h3>Индивидуальные наценки</h3><span class="more">доступны на всех тарифах</span></div>
+    <form method="post" action="/cabinet/profile/markups">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <fieldset style="border:0;padding:0;margin:0" {{ 'disabled' if not editable or not usage.subscription }}>
+      <div class="form-grid">
+        <div class="field"><label for="m1">Материалы, %</label><input class="input" id="m1" name="materials" inputmode="decimal" value="{{ e.markup_materials|qty }}"></div>
+        <div class="field"><label for="m2">Фурнитура, %</label><input class="input" id="m2" name="hardware" inputmode="decimal" value="{{ e.markup_hardware|qty }}"></div>
+        <div class="field"><label for="m3">Работы цеха (в т.ч. сборка и монтаж), %</label><input class="input" id="m3" name="works" inputmode="decimal" value="{{ e.markup_works|qty }}"></div>
+        <div class="field"><label for="m4">Фиксированная сумма, сум</label><input class="input" id="m4" name="fixed" inputmode="decimal" value="{{ e.fixed_addition|qty }}"></div>
+      </div>
+      <p class="hint">Новые значения применяются к новым заказам. В существующем заказе наценки можно изменить в боте до формирования сметы.</p>
+      {% if editable and usage.subscription %}<button class="btn">Сохранить наценки</button>{% elif not usage.subscription %}<p class="hint">Изменение наценок доступно при активной подписке.</p>{% endif %}
+      </fieldset>
+    </form>
+  </div>
+  <div class="card">
+    <div class="card-h"><h3>Логотип в PDF-смете</h3></div>
+    {% if e.logo_path %}<img src="/cabinet/logo" alt="Логотип предприятия" style="max-height:64px;margin-bottom:12px">{% endif %}
+    {% if logo_allowed and editable %}
+      <form method="post" action="/cabinet/profile/logo" enctype="multipart/form-data">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input class="input" type="file" name="logo" accept="image/png,image/jpeg" required>
+        <button class="btn" style="margin-top:10px">Загрузить</button>
+      </form>
+    {% elif not logo_allowed %}
+      <p class="muted">Логотип в смете доступен на тарифах BUSINESS, PRO и ENTERPRISE.</p>
+      {% if ctx.can('billing.manage') %}<a class="btn accent" href="/cabinet/subscription">Сменить тариф</a>{% endif %}
+    {% endif %}
+  </div>
+  <div class="card">
+    <div class="card-h"><h3>Аккаунт</h3></div>
+    <dl class="dl"><dt>Имя</dt><dd>{{ ctx.user.full_name or '—' }}</dd><dt>Telegram</dt><dd>{{ '@' ~ ctx.user.telegram_username if ctx.user.telegram_username else ctx.user.telegram_id }}</dd><dt>Роль</dt><dd>{{ ROLE_TITLES[ctx.role] }}</dd></dl>
+    <div class="card-h" style="margin-top:18px"><h3>Активные сессии</h3>
+      <form method="post" action="/cabinet/sessions/revoke" class="inline" style="margin-left:auto"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="others" value="1"><button class="btn ghost sm">Завершить все, кроме текущей</button></form></div>
+    <table class="t"><tbody>{% for s in sessions %}
+      <tr><td>{{ (s.user_agent or 'Браузер')[:60] }}<div class="muted">{{ s.ip or '' }} · {{ s.last_seen_at|dt }}</div></td>
+        <td class="num">{% if s.id == current_session %}<span class="badge good">Текущая</span>{% else %}
+          <form method="post" action="/cabinet/sessions/revoke" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="session_id" value="{{ s.id }}"><button class="btn ghost sm">Завершить</button></form>{% endif %}</td></tr>
+    {% endfor %}</tbody></table>
+  </div>
+</div>
+{% endblock %}

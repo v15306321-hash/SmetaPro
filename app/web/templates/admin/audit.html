@@ -1,0 +1,15 @@
+{% extends "cabinet/base.html" %}
+{% block title %}Журнал{% endblock %}
+{% block content %}
+<div class="page-title">Журнал действий</div>
+<form class="card row" method="get" style="margin-bottom:16px">
+  <input class="input" name="action" value="{{ action }}" placeholder="Фильтр по действию: payment, admin, referral…" style="max-width:360px"><button class="btn ghost">Показать</button>
+</form>
+<div class="card"><div class="table-wrap"><table class="t">
+  <thead><tr><th>Время</th><th>Действие</th><th>Кто</th><th>Объект</th><th>Детали</th></tr></thead>
+  <tbody>{% for a in items %}
+    <tr><td style="white-space:nowrap">{{ a.created_at|dt }}</td><td><code>{{ a.action }}</code></td><td>{{ a.actor.full_name if a.actor else 'система' }}</td>
+      <td>{{ a.entity or '' }} {{ a.entity_id or '' }}{% if a.enterprise_id %}<div class="muted">предпр. #{{ a.enterprise_id }}</div>{% endif %}</td>
+      <td class="muted" style="font-size:12px;max-width:420px;word-break:break-word">{{ a.data|tojson if a.data else '' }}</td></tr>
+  {% endfor %}</tbody></table></div></div>
+{% endblock %}

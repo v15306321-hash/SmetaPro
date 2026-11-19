@@ -1,0 +1,38 @@
+{% macro plan_cards(plans, cta_href=None) %}
+<div class="price-grid">
+  {% for p in plans %}
+  <div class="price {{ 'featured' if p.code == 'BUSINESS' }}">
+    <h3>{{ p.title }}</h3>
+    <div class="sub">{{ p.subtitle }}</div>
+    <div class="amount">{{ p.price|money('') }}</div>
+    <div class="per">сум за 30 дней</div>
+    <ul>
+      <li>✓ {{ p.estimates_limit }} генераций смет</li>
+      <li>✓ {{ p.materials_limit }} позиций в базе материалов</li>
+      <li>✓ {% if p.users_limit == 1 %}1 пользователь (владелец){% else %}до {{ p.users_limit }} пользователей{% endif %}</li>
+      {% for key, title in FEATURE_TITLES.items() %}
+        <li class="{{ '' if p.features.get(key) else 'off' }}">{{ '✓' if p.features.get(key) else '—' }} {{ title }}</li>
+      {% endfor %}
+    </ul>
+    <a class="btn {{ '' if p.code == 'BUSINESS' else 'btn-ghost' }} btn-block" href="{{ cta_href or settings.bot_link }}">Выбрать {{ p.title }}</a>
+  </div>
+  {% endfor %}
+</div>
+{% endmacro %}
+
+{% macro compare(plans) %}
+<div class="table-scroll">
+<table class="cmp">
+  <thead><tr><th>Параметр</th>{% for p in plans %}<th>{{ p.title }}</th>{% endfor %}</tr></thead>
+  <tbody>
+    <tr><td>Цена за 30 дней</td>{% for p in plans %}<td>{{ p.price|money }}</td>{% endfor %}</tr>
+    <tr><td>Генерации смет</td>{% for p in plans %}<td>{{ p.estimates_limit }}</td>{% endfor %}</tr>
+    <tr><td>Позиции базы материалов</td>{% for p in plans %}<td>{{ '{:,}'.format(p.materials_limit).replace(',', ' ') }}</td>{% endfor %}</tr>
+    {% for key, title in FEATURE_TITLES.items() %}
+    <tr><td>{{ title }}</td>{% for p in plans %}<td>{% if p.features.get(key) %}<span class="yes">Да</span>{% else %}<span class="no">Нет</span>{% endif %}</td>{% endfor %}</tr>
+    {% endfor %}
+    <tr><td>Пользователи, включая владельца</td>{% for p in plans %}<td>{{ p.users_limit }}</td>{% endfor %}</tr>
+  </tbody>
+</table>
+</div>
+{% endmacro %}

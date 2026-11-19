@@ -1,0 +1,94 @@
+{% extends "cabinet/base.html" %}
+{% from "cabinet/_widgets.html" import kpi, status_badge with context %}
+{% block title %}Аналитика{% endblock %}
+{% block subtitle %}Финансовая аналитика{% endblock %}
+{% block content %}
+<div class="page-title">Финансовая аналитика
+  <span class="chip">{{ start|date }} — {{ end|date }}</span>
+</div>
+
+<form class="card row" method="get" style="margin-bottom:16px" aria-label="Период">
+  {% for key, title in periods.items() %}
+    <label class="method"><input type="radio" name="period" value="{{ key }}" {{ 'checked' if period == key }} onchange="if(this.value!=='custom')this.form.submit()"> {{ title }}</label>
+  {% endfor %}
+  <input class="input" type="date" name="start" value="{{ start }}" style="width:auto" aria-label="Начало">
+  <input class="input" type="date" name="end" value="{{ end }}" style="width:auto" aria-label="Конец">
+  {% if statuses_on %}<label class="row" style="gap:6px"><input type="checkbox" name="completed" value="1" {{ 'checked' if completed }}> только завершённые</label>{% endif %}
+  <button class="btn ghost">Показать</button>
+</form>
+
+{% set s, p = summary, prev %}
+<div class="grid g4">
+  {{ kpi('Выручка', s.revenue|money0, s.revenue, p.revenue, spark.revenue, 's1', True, s.orders ~ ' заказ(ов) · средний чек ' ~ (s.avg_check|money0)) }}
+  {{ kpi('Себестоимость заказов', s.cost|money0, s.cost, p.cost, None, 's1', False, 'материалы, фурнитура, работы') }}
+  {{ kpi('Валовая прибыль', s.gross|money0, s.gross, p.gross, None, 's1', True, 'доход от наценок · ' ~ (s.gross_margin|string|replace('.', ',')) ~ '%') }}
+  {{ kpi('Расчётный фин. результат', s.result|money0, s.result, p.result, None, 's1', True, 'после произв. затрат · ' ~ (s.result_margin|string|replace('.', ',')) ~ '%') }}
+</div>
+
+<div class="grid g3" style="margin-top:16px">
+  <div class="card span2">
+    <div class="card-h"><h3>Динамика выручки и затрат</h3><span class="more">7 месяцев</span></div>
+    <div class="legend"><span><i style="background:var(--series-1)"></i>Выручка</span><span><i style="background:var(--series-2)"></i>Себестоимость + произв. затраты</span></div>
+    <div class="chart-box"><canvas data-lines='{{ {"labels": series.labels, "series": [{"label": "Выручка", "data": series.revenue}, {"label": "Затраты", "data": series.costs}]}|tojson }}' role="img" aria-label="Выручка и затраты по месяцам"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-h"><h3>Структура за период</h3></div>
+    <table class="t">
+      <tbody>
+        <tr><td>Выручка (расчётная)</td><td class="num"><b>{{ s.revenue|money }}</b></td></tr>
+        <tr><td>− Материалы</td><td class="num">{{ s.cost_materials|money }}</td></tr>
+        <tr><td>− Фурнитура</td><td class="num">{{ s.cost_hardware|money }}</td></tr>
+        <tr><td>− Работы цеха</td><td class="num">{{ s.cost_works|money }}</td></tr>
+        <tr><td><b>= Валовая прибыль</b></td><td class="num"><b>{{ s.gross|money }}</b></td></tr>
+        <tr><td>− Производственные затраты</td><td class="num">{{ s.expenses|money }}</td></tr>
+        <tr><td><b>= Расчётный результат</b></td><td class="num"><b>{{ s.result|money }}</b></td></tr>
+      </tbody>
+    </table>
+    <p class="hint">Расчётный результат не является фактической чистой прибылью: налоги, аренда, зарплата и иные обязательства не учитываются.</p>
+  </div>
+</div>
+
+<div class="grid g3" style="margin-top:16px">
+  <div class="card">
+    <div class="card-h"><h3>Материалы по категориям</h3></div>
+    {% if materials %}<div class="chart-box" style="height:240px"><canvas data-bars='{{ {"labels": materials|map(attribute=0)|list, "values": materials|map(attribute=1)|list}|tojson }}' data-horizontal="1" role="img" aria-label="Материалы по категориям"></canvas></div>
+    {% else %}<p class="muted">Нет данных за период</p>{% endif %}
+  </div>
+  <div class="card">
+    <div class="card-h"><h3>Производственные затраты</h3></div>
+    {% if expenses %}<div class="chart-box" style="height:240px"><canvas data-bars='{{ {"labels": expenses|map(attribute=0)|list, "values": expenses|map(attribute=1)|list}|tojson }}' data-horizontal="1" data-color="s2" role="img" aria-label="Производственные затраты по категориям"></canvas></div>
+    {% else %}<p class="muted">Нет записей за период</p>{% endif %}
+  </div>
+  <div class="card">
+    <div class="card-h"><h3>Маржинальность по изделиям</h3></div>
+    {% if margins %}<div class="chart-box" style="height:240px"><canvas data-bars='{{ {"labels": margins|map(attribute=0)|list, "values": margins|map(attribute=1)|list}|tojson }}' data-unit="%" data-color="s3" data-horizontal="1" role="img" aria-label="Маржинальность по изделиям"></canvas></div>
+    {% else %}<p class="muted">Нет данных за период</p>{% endif %}
+  </div>
+</div>
+
+<div class="card" style="margin-top:16px">
+  <div class="card-h"><h3>Крупнейшие заказы периода</h3></div>
+  {% if top %}
+  <div class="table-wrap"><table class="t">
+    <thead><tr><th>№</th><th>Клиент</th><th>Статус</th><th class="num">Себестоимость</th><th class="num">Цена</th><th class="num">Доход от наценок</th></tr></thead>
+    <tbody>{% for o in top %}<tr><td><a href="/cabinet/orders/{{ o.id }}">{{ o.number }}</a></td><td>{{ o.client_name or '—' }}<div class="muted">{{ o.title }}</div></td><td>{{ status_badge(o.status) }}</td>
+      <td class="num">{{ o.cost_total|money }}</td><td class="num">{{ o.price_total|money }}</td><td class="num">{{ o.markup_income|money }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<p class="muted">Заказов за период нет.</p>{% endif %}
+</div>
+
+<details class="card" style="margin-top:16px">
+  <summary style="cursor:pointer;font-weight:600">Методика расчёта</summary>
+  <ul class="muted">
+    <li><b>Выручка</b> — сумма итоговых цен заказов, созданных в периоде (с наценками и фиксированными суммами).</li>
+    <li><b>Себестоимость</b> — материалы, фурнитура и работы цеха по ценам из базы, без наценок.</li>
+    <li><b>Валовая прибыль</b> = выручка − себестоимость, т.е. доход, сформированный наценками.</li>
+    <li><b>Производственные затраты</b> — записи раздела «Производственные затраты» с датой в периоде.</li>
+    <li><b>Расчётный фин. результат</b> = валовая прибыль − производственные затраты.</li>
+  </ul>
+</details>
+{% endblock %}
+{% block scripts %}
+<script src="/static/vendor/chart.umd.min.js"></script>
+<script src="/static/js/charts.js"></script>
+{% endblock %}
