@@ -214,11 +214,13 @@ def set_markups(ctx: Ctx, *, materials=None, hardware=None, works=None, fixed=No
 
 def set_logo(ctx: Ctx, data: bytes, ext: str) -> str:
     from app.services import tariffs
-    from app.services.files import save_image
+    from app.services import files
     ctx.require("settings.edit")
     tariffs.require_feature(ctx.db, ctx.eid, "pdf_logo")
-    path = save_image(data, ext, folder=f"logos/{ctx.eid}")
+    old = ctx.enterprise.logo_path
+    path = files.save_image(ctx.db, data, ctx.eid)
     ctx.enterprise.logo_path = path
+    files.delete(ctx.db, old)
     log(ctx.db, "enterprise.logo", actor_id=ctx.user.id, enterprise_id=ctx.eid)
     return path
 

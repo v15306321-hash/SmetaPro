@@ -220,3 +220,40 @@ def test_invite_and_login_deeplinks(db, owner):
     assert "Вход подтверждён" in worker.last()
     db.expire_all()
     assert auth_web.poll_login(db, token, poll).telegram_id == 4242
+
+
+def test_background_is_event_driven(db, monkeypatch):
+    """Без действий пользователей фоновая задача не обращается к БД (бесплатная БД может спать),
+    а после kick() уведомления доставляются сразу."""
+    from sqlalchemy import event
+
+    from app import db as dbmod
+    from app.bot import runner
+    from app.config import get_settings
+    from app.services import accounts
+    from app.services.audit import notify
+
+    monkeypatch.setattr(get_settings(), "jobs_interval_seconds", 3600)
+    user, _ = accounts.get_or_create_telegram_user(db, 5555, full_name="Тест")
+    db.commit()
+    c = TgClient(5555)
+    queries = []
+    listener = lambda *a, **k: queries.append(1)  # noqa: E731
+
+    async def scenario():
+        task = asyncio.create_task(runner.background(c.bot))
+        await asyncio.sleep(0.5)                       # первый проход: задачи + доставка
+        event.listen(dbmod.engine, "before_cursor_execute", listener)
+        await asyncio.sleep(2)                         # простой
+        idle = len(queries)
+        with dbmod.session_scope() as s:
+            notify(s, user.id, "Событие")
+        runner.kick()
+        await asyncio.sleep(1.8)
+        event.remove(dbmod.engine, "before_cursor_execute", listener)
+        task.cancel()
+        return idle
+
+    idle_queries = asyncio.run(scenario())
+    assert idle_queries == 0
+    assert any(getattr(m, "text", "") == "Событие" for m in c.session.calls)

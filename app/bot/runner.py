@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 
 from aiogram import BaseMiddleware, Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
@@ -45,7 +46,10 @@ class DedupMiddleware(BaseMiddleware):
         if not await asyncio.to_thread(mark):
             log.info("duplicate update %s skipped", event.update_id)
             return None
-        return await handler(event, data)
+        try:
+            return await handler(event, data)
+        finally:
+            kick()  # действие могло поставить уведомления в очередь — доставить сразу
 
 
 class MenuResetMiddleware(BaseMiddleware):
@@ -133,21 +137,44 @@ async def deliver_notifications(bot: Bot) -> int:
     return sent
 
 
+_wake: asyncio.Event | None = None
+_loop: asyncio.AbstractEventLoop | None = None
+
+
+def kick() -> None:
+    """Разбудить фоновую задачу: появились новые уведомления. Можно вызывать из любого потока."""
+    if _loop and _wake and not _loop.is_closed():
+        _loop.call_soon_threadsafe(_wake.set)
+
+
 async def background(bot: Bot):
-    tick = 0
+    """Уведомления доставляются по сигналу kick() (после действий пользователей), периодические
+    задачи — раз в JOBS_INTERVAL_SECONDS. Между ними к БД нет обращений — бесплатная БД может спать."""
+    global _wake, _loop
+    _loop = asyncio.get_running_loop()
+    _wake = asyncio.Event()
+    interval = max(30, get_settings().jobs_interval_seconds)
+    last_jobs = 0.0
+
+    def run_jobs():
+        with session_scope() as db:
+            jobs.subscription_reminders(db)
+            jobs.cleanup(db)
+
     while True:
         try:
-            await deliver_notifications(bot)
-            if tick % 120 == 0:  # каждые ~10 минут
-                def run_jobs():
-                    with session_scope() as db:
-                        jobs.subscription_reminders(db)
-                        jobs.cleanup(db)
+            if time.monotonic() - last_jobs >= interval:
                 await asyncio.to_thread(run_jobs)
+                last_jobs = time.monotonic()
+            await deliver_notifications(bot)
         except Exception:
             log.exception("background loop error")
-        tick += 1
-        await asyncio.sleep(5)
+        try:
+            await asyncio.wait_for(_wake.wait(), timeout=interval)
+            await asyncio.sleep(1)  # дать завершиться транзакции, которая создала уведомление
+        except asyncio.TimeoutError:
+            pass
+        _wake.clear()
 
 
 # ---------------------------------------------------------------- webhook

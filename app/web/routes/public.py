@@ -90,6 +90,12 @@ def referral(code: str):
     return resp
 
 
+@router.get("/healthz")
+def healthz():
+    """Проверка доступности без обращения к БД (Render health check, UptimeRobot)."""
+    return PlainTextResponse("ok")
+
+
 @router.get("/robots.txt")
 def robots():
     s = get_settings()

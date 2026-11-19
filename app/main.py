@@ -48,6 +48,10 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
         response = await call_next(request)
+        if request.method == "POST":
+            # действие могло создать уведомления — разбудить доставку (в режиме webhook бот в этом процессе)
+            from app.bot.runner import kick
+            kick()
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")

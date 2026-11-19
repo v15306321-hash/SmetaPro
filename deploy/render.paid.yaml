@@ -1,0 +1,45 @@
+# Render Blueprint — ПЛАТНЫЙ вариант (~$13/мес): сервис не засыпает, база Render PostgreSQL с бэкапами.
+# Использование: скопируйте этот файл поверх render.yaml в корне репозитория и создайте Blueprint.
+# Переход с бесплатного варианта с переносом данных — docs/RENDER.md, раздел «Переход на платный тариф».
+services:
+  - type: web
+    name: furniture-estimate
+    runtime: python
+    plan: starter
+    region: frankfurt
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    preDeployCommand: alembic upgrade head && python -m app.cli seed
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips=*
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: APP_ENV
+        value: production
+      - key: BOT_MODE
+        value: webhook
+      - key: DATABASE_URL
+        fromDatabase:
+          name: furniture-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: BASE_URL
+        sync: false
+      - key: BOT_TOKEN
+        sync: false
+      - key: BOT_USERNAME
+        sync: false
+      - key: SUPERADMIN_TELEGRAM_IDS
+        sync: false
+      - key: SUPPORT_TELEGRAM
+        sync: false
+
+databases:
+  - name: furniture-db
+    plan: basic-256mb
+    region: frankfurt
+    databaseName: furniture
+    user: furniture

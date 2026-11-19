@@ -10,7 +10,7 @@ COPY app ./app
 COPY alembic ./alembic
 COPY alembic.ini .
 
-RUN useradd --create-home --uid 1000 app && mkdir -p /app/storage && chown app /app/storage
+RUN useradd --create-home --uid 1000 app
 USER app
 
 EXPOSE 8000

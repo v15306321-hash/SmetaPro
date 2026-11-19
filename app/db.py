@@ -15,6 +15,11 @@ def make_engine(url: str):
     kwargs = {"pool_pre_ping": True}
     if url.startswith("sqlite"):
         kwargs["connect_args"] = {"check_same_thread": False}
+    elif get_settings().db_null_pool:
+        # соединение закрывается сразу после использования; без серверных prepared statements
+        # (совместимо с пулерами соединений, например Neon pooler / PgBouncer)
+        from sqlalchemy.pool import NullPool
+        kwargs = {"poolclass": NullPool, "connect_args": {"prepare_threshold": None}}
     engine = create_engine(url, **kwargs)
     if url.startswith("sqlite"):
         @event.listens_for(engine, "connect")

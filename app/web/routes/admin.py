@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import httpx
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -67,7 +67,8 @@ def receipt(pid: int, admin: User = Depends(superadmin), db: Session = Depends(g
     if not pr:
         raise NotFound("Заявка не найдена.")
     if pr.receipt_path:
-        return FileResponse(files.abs_path(pr.receipt_path))
+        f = files.load(db, pr.receipt_path)
+        return Response(f.data, media_type=f.content_type)
     if pr.receipt_file_id:
         token = get_settings().bot_token
         with httpx.Client(timeout=20) as c:

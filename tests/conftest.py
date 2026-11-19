@@ -1,11 +1,9 @@
 import os
 import tempfile
-from pathlib import Path
 
 _tmp = tempfile.mkdtemp(prefix="fe-test-")
 # По умолчанию — SQLite; для проверки на PostgreSQL: TEST_DATABASE_URL=postgresql+psycopg://... pytest
 os.environ["DATABASE_URL"] = os.environ.get("TEST_DATABASE_URL") or f"sqlite:///{_tmp}/test.db"
-os.environ["STORAGE_DIR"] = f"{_tmp}/storage"
 os.environ["BOT_TOKEN"] = "123456:TEST-TOKEN"
 os.environ["SUPERADMIN_TELEGRAM_IDS"] = "999"
 os.environ["APP_ENV"] = "test"
@@ -78,5 +76,3 @@ def add_member(db, ctx, role=Role.master):
     staff.accept(db, u, inv.code)
     return accounts.load_ctx(db, u)
 
-
-Path(_tmp, "storage").mkdir(exist_ok=True)

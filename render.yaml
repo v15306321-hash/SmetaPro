@@ -1,37 +1,34 @@
-# Render Blueprint: одна кнопка создаёт базу PostgreSQL и веб-сервис (сайт + бот + фоновые задачи).
-# Инструкция: docs/RENDER.md. Значения с sync: false Render спросит при создании — их нет в репозитории.
+# Render Blueprint — БЕСПЛАТНЫЙ вариант: веб-сервис Render Free + база Neon Free (создаётся отдельно).
+# Инструкция: docs/RENDER.md. Платный вариант (без засыпания): deploy/render.paid.yaml.
+# Значения с sync: false Render спросит при создании — в репозитории их нет.
 services:
   - type: web
     name: furniture-estimate
     runtime: python
-    plan: starter            # бесплатный план не подходит: засыпает и не поддерживает диск
-    region: frankfurt        # ближайший к Узбекистану регион Render
+    plan: free
+    region: frankfurt          # ближайший к Узбекистану; базу Neon создайте тоже во Франкфурте
     branch: main
     buildCommand: pip install -r requirements.txt
-    preDeployCommand: alembic upgrade head && python -m app.cli seed
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips=*
-    healthCheckPath: /robots.txt
+    # миграции и справочники применяются при каждом запуске (идемпотентно), затем стартует сервер
+    startCommand: alembic upgrade head && python -m app.cli seed && uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips=*
+    healthCheckPath: /healthz
     autoDeploy: true
-    disk:                    # PDF-сметы, чеки и логотипы (файловая система сервиса без диска очищается при деплое)
-      name: storage
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.7
       - key: APP_ENV
         value: production
       - key: BOT_MODE
-        value: webhook       # бот работает внутри веб-сервиса
-      - key: STORAGE_DIR
-        value: /var/data/storage
-      - key: DATABASE_URL
-        fromDatabase:
-          name: furniture-db
-          property: connectionString
+        value: webhook          # бот работает внутри веб-сервиса
+      - key: DB_NULL_POOL
+        value: "true"           # не держать соединения — база Neon может засыпать
+      - key: JOBS_INTERVAL_SECONDS
+        value: "3600"           # напоминания о подписке — раз в час
       - key: SECRET_KEY
         generateValue: true
-      - key: BASE_URL         # https://<имя-сервиса>.onrender.com или ваш домен
+      - key: DATABASE_URL       # строка подключения из Neon
+        sync: false
+      - key: BASE_URL           # https://<имя-сервиса>.onrender.com
         sync: false
       - key: BOT_TOKEN
         sync: false
@@ -41,10 +38,3 @@ services:
         sync: false
       - key: SUPPORT_TELEGRAM
         sync: false
-
-databases:
-  - name: furniture-db
-    plan: basic-256mb
-    region: frankfurt
-    databaseName: furniture
-    user: furniture

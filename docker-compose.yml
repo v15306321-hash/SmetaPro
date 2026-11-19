@@ -22,11 +22,8 @@ services:
     environment:
       APP_ENV: production
       DATABASE_URL: postgresql+psycopg://furniture:${POSTGRES_PASSWORD}@db:5432/furniture
-      STORAGE_DIR: /app/storage
     # миграции применяются при каждом старте (идемпотентно), затем запускается один процесс uvicorn
     command: sh -c "alembic upgrade head && python -m app.cli seed && uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=*"
-    volumes:
-      - storage:/app/storage
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
@@ -40,14 +37,10 @@ services:
     environment:
       APP_ENV: production
       DATABASE_URL: postgresql+psycopg://furniture:${POSTGRES_PASSWORD}@db:5432/furniture
-      STORAGE_DIR: /app/storage
     command: python -m app.bot.runner
-    volumes:
-      - storage:/app/storage   # PDF-сметы и чеки общие для бота и сайта
     depends_on:
       web:
         condition: service_started
 
 volumes:
   pgdata:
-  storage:

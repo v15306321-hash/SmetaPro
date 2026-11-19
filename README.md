@@ -16,7 +16,7 @@ SaaS-платформа для мебельных мастерских, цехо
 | Telegram-бот | `app/bot/` | aiogram 3: регистрация, расчёт заказа, PDF, материалы, затраты, аналитика, сотрудники, оплата, рефералы, настройки, проверка оплат админом |
 | Сайт | `app/web/`, `app/main.py` | FastAPI + Jinja2: публичные страницы, вход через Telegram, кабинет с аналитикой, админ-панель, REST API (`/api/docs`) |
 | PDF | `app/pdf/estimate.py` | ReportLab, кириллица (DejaVu), логотип для BUSINESS+ |
-| Тесты | `tests/` | 50 сценариев: сервисы, веб, бот (через настоящий Dispatcher), конкурентное подтверждение оплаты |
+| Тесты | `tests/` | 52 сценария: сервисы, веб, бот (через настоящий Dispatcher), конкурентное подтверждение оплаты |
 
 ## Технологический стек и обоснование
 
@@ -63,7 +63,7 @@ alembic upgrade head                   # миграции БД
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — модули, потоки данных, безопасность, решения
 - [docs/CALCULATION.md](docs/CALCULATION.md) — формула калькулятора и методика аналитики
 - [docs/DATABASE.md](docs/DATABASE.md) — структура базы данных
-- [docs/RENDER.md](docs/RENDER.md) — **пошаговое размещение на Render** (сайт + бот + база, одной кнопкой)
+- [docs/RENDER.md](docs/RENDER.md) — **бесплатное размещение: Render + Neon**, пошагово (платный вариант — `deploy/render.paid.yaml`)
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — развёртывание на своём сервере (Docker), бэкапы, обновление
 - [docs/OPEN_QUESTIONS.md](docs/OPEN_QUESTIONS.md) — **решения, принятые по умолчанию и требующие согласования (ТЗ п. 25–26)**
 - API: `/api/docs` на запущенном сервере

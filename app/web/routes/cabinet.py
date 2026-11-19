@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.core.errors import DomainError, FeatureUnavailable, NotFound
@@ -124,10 +124,9 @@ def order_page(order_id: int, request: Request, ctx: Ctx = Depends(require_ctx))
 @router.get("/estimates/{uid}.pdf")
 def estimate_pdf(uid: str, ctx: Ctx = Depends(require_ctx)):
     _need_enterprise(ctx)
-    est, path = estimates.get_file(ctx, uid)
-    if not path.exists():
-        raise NotFound("Файл сметы не найден.")
-    return FileResponse(path, media_type="application/pdf", filename=f"{est.uid}.pdf")
+    est, data = estimates.get_file(ctx, uid)
+    return Response(data, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{est.uid}.pdf"'})
 
 
 # ---------------------------------------------------------------- subscription / payments
@@ -171,7 +170,7 @@ def payment_page(payment_id: int, request: Request, ctx: Ctx = Depends(require_c
 async def payment_receipt(payment_id: int, receipt: UploadFile = File(...), ctx: Ctx = Depends(require_ctx)):
     _need_enterprise(ctx)
     data = await receipt.read(files.MAX_SIZE + 1)
-    path = files.save_receipt(data, folder=f"receipts/{ctx.eid}")
+    path = files.save_receipt(ctx.db, data, ctx.eid)
     payments.attach_receipt(ctx, payment_id, path=path)
     return flash_redirect(f"/cabinet/payments/{payment_id}", ok="Чек отправлен на проверку.")
 
@@ -271,7 +270,8 @@ def logo(ctx: Ctx = Depends(require_ctx)):
     _need_enterprise(ctx)
     if not ctx.enterprise.logo_path:
         raise NotFound("Логотип не загружен.")
-    return FileResponse(files.abs_path(ctx.enterprise.logo_path))
+    f = files.load(ctx.db, ctx.enterprise.logo_path, ctx.eid)
+    return Response(f.data, media_type=f.content_type, headers={"Cache-Control": "private, max-age=300"})
 
 
 @router.post("/sessions/revoke", **POST)

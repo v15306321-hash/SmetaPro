@@ -3,6 +3,7 @@
 с размерами, количеством, ценой и суммой → итоги → сумма прописью."""
 from __future__ import annotations
 
+import io
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
@@ -59,7 +60,7 @@ class PdfData:
     company_address: str | None
     company_email: str | None
     company_tax_id: str | None
-    logo_path: Path | None
+    logo: bytes | None
     order_number: int
     order_title: str
     client_name: str
@@ -93,10 +94,10 @@ def _esc(s: str | None) -> str:
     return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def render(data: PdfData, out: Path) -> Path:
+def render(data: PdfData) -> bytes:
     _ensure_fonts()
     st = _styles()
-    out.parent.mkdir(parents=True, exist_ok=True)
+    out = io.BytesIO()
     W = A4[0] - 30 * mm
 
     def on_page(canvas, doc):
@@ -111,16 +112,16 @@ def render(data: PdfData, out: Path) -> Path:
         canvas.line(15 * mm, A4[1] - 10 * mm, A4[0] - 15 * mm, A4[1] - 10 * mm)
         canvas.restoreState()
 
-    doc = SimpleDocTemplate(str(out), pagesize=A4, leftMargin=15 * mm, rightMargin=15 * mm,
+    doc = SimpleDocTemplate(out, pagesize=A4, leftMargin=15 * mm, rightMargin=15 * mm,
                             topMargin=16 * mm, bottomMargin=18 * mm,
                             title=f"Смета {data.uid}", author=data.company_name)
     story = []
 
     # ---- шапка
     left = []
-    if data.logo_path and data.logo_path.exists():
+    if data.logo:
         try:
-            img = Image(str(data.logo_path))
+            img = Image(io.BytesIO(data.logo))
             ratio = img.imageWidth / float(img.imageHeight or 1)
             h = 16 * mm
             img.drawHeight, img.drawWidth = h, min(h * ratio, 50 * mm)
@@ -218,4 +219,4 @@ def render(data: PdfData, out: Path) -> Path:
               Paragraph("Документ является коммерческим предложением (сметой) и не является фискальным кассовым чеком. "
                         "Окончательная стоимость может быть уточнена после замера и согласования проекта.", st["small"])]
     doc.build(story, onFirstPage=on_page, onLaterPages=on_page)
-    return out
+    return out.getvalue()

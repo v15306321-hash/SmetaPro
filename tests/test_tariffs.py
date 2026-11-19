@@ -47,8 +47,8 @@ def test_estimate_limit_and_pdf(db):
     orders.add_item(ctx, o.id, kind=ItemKind.material, name="ЛДСП", unit="м²", unit_cost=120000,
                     height_mm=2400, width_mm=600, pieces=2, section="Шкаф-купе")
     e1 = estimates.generate(ctx, o.id)
-    est, path = estimates.get_file(ctx, e1.uid)
-    assert path.exists() and path.read_bytes().startswith(b"%PDF")
+    est, data = estimates.get_file(ctx, e1.uid)
+    assert data.startswith(b"%PDF") and len(data) < 200_000
     estimates.generate(ctx, o.id)
     with pytest.raises(LimitReached):
         estimates.generate(ctx, o.id)
@@ -193,3 +193,29 @@ def test_tenant_isolation(db):
     with pytest.raises(NotFound):
         estimates.get_file(b, est.uid)
     _ = Subscription
+
+
+def test_logo_in_pdf_stored_in_db(db):
+    import io
+
+    from PIL import Image as PILImage
+
+    from app.models import StoredFile
+    from app.services import accounts
+    buf = io.BytesIO()
+    PILImage.new("RGB", (120, 40), (169, 135, 111)).save(buf, "PNG")
+    start = make_enterprise(db, "START", name="Без логотипа")
+    with pytest.raises(FeatureUnavailable):
+        accounts.set_logo(start, buf.getvalue(), "")
+    ctx = make_enterprise(db, "BUSINESS", name="С логотипом")
+    accounts.set_logo(ctx, buf.getvalue(), "")
+    first = ctx.enterprise.logo_path
+    accounts.set_logo(ctx, buf.getvalue(), "")          # замена — старый файл удаляется
+    assert db.get(StoredFile, first) is None
+    o = orders.create(ctx, client_name="Клиент")
+    orders.add_item(ctx, o.id, kind=ItemKind.material, name="ЛДСП", unit="шт", unit_cost=100, quantity=1)
+    plain = estimates.generate(ctx, o.id)
+    _, data = estimates.get_file(ctx, plain.uid)
+    assert data.startswith(b"%PDF") and b"/Subtype /Image" in data   # логотип встроен в PDF
+    orders.delete(ctx, o.id)
+    assert db.query(StoredFile).filter_by(kind="estimate").count() == 0  # PDF удалены вместе с заказом

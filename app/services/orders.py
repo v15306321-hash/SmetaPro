@@ -206,6 +206,10 @@ def remove_item(ctx: Ctx, order_id: int, item_id: int) -> Order:
 def delete(ctx: Ctx, order_id: int) -> None:
     ctx.require("orders.edit")
     o = get(ctx, order_id)
+    from app.models import Estimate
+    from app.services import files
+    for key in ctx.db.scalars(select(Estimate.file_path).where(Estimate.order_id == o.id)):
+        files.delete(ctx.db, key)  # PDF хранятся в БД — удаляем вместе с заказом
     ctx.db.delete(o)
     log(ctx.db, "order.deleted", actor_id=ctx.user.id, enterprise_id=ctx.eid, entity="order", entity_id=order_id)
 

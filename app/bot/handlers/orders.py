@@ -6,7 +6,7 @@ import re
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, FSInputFile, Message
+from aiogram.types import BufferedInputFile, CallbackQuery, Message
 
 from app.bot.core import BTN_NEW, BTN_ORDERS, answer, call, e, kb, parse_num
 from app.core.errors import ValidationError
@@ -14,7 +14,6 @@ from app.core.fmt import money, qty
 from app.models import ItemKind, OrderStatus
 from app.services import estimates, materials, orders, tariffs, waste
 from app.services.accounts import Ctx
-from app.services.files import abs_path
 
 router = Router(name="orders")
 PAGE = 8
@@ -373,12 +372,13 @@ async def make_pdf(cq: CallbackQuery):
         est = estimates.generate(ctx, oid)
         sub = tariffs.current_subscription(ctx.db, ctx.eid)
         left = sub.plan.estimates_limit - sub.estimates_used
-        return str(abs_path(est.file_path)), est.uid, money(est.total), left
+        _, data = estimates.get_file(ctx, est.uid)
+        return data, est.uid, money(est.total), left
     res = await call(cq, work)
     if res:
-        path, uid, total, left = res
+        data, uid, total, left = res
         await cq.message.answer_document(
-            FSInputFile(path, filename=f"{uid}.pdf"),
+            BufferedInputFile(data, filename=f"{uid}.pdf"),
             caption=f"📄 Смета {uid}\nИтого: <b>{total}</b>\nОсталось генераций в периоде: {left}\n\n"
                     "Перешлите этот файл клиенту в Telegram.")
 

@@ -11,7 +11,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import (
-    JSON, BigInteger, Boolean, Date, DateTime, Enum, ForeignKey, Integer, Numeric,
+    JSON, BigInteger, Boolean, Date, DateTime, Enum, ForeignKey, Integer, LargeBinary, Numeric,
     String, Text, UniqueConstraint, Index,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -383,6 +383,21 @@ class MaterialUsage(Base):
 
 
 # ---------------------------------------------------------------- infra
+
+class StoredFile(Base):
+    """Файлы (PDF-сметы, чеки, логотипы) хранятся в БД: так они не теряются на хостингах
+    с временной файловой системой (Render Free и др.) и попадают в резервную копию базы.
+    Поля logo_path / receipt_path / file_path других таблиц содержат ключ (id) записи."""
+    __tablename__ = "stored_files"
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    enterprise_id: Mapped[int | None] = mapped_column(ForeignKey("enterprises.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(16))          # estimate | receipt | logo
+    content_type: Mapped[str] = mapped_column(String(64))
+    size: Mapped[int] = mapped_column(Integer)
+    data: Mapped[bytes] = mapped_column(LargeBinary)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
 
 class AuditLog(Base):
     __tablename__ = "audit_log"

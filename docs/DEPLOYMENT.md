@@ -63,11 +63,11 @@ sudo nginx -t && sudo systemctl reload nginx
 ## 6. Резервное копирование и восстановление
 
 ```bash
-# ежедневно в 03:15 — БД (pg_dump) и файлы (PDF, чеки, логотипы), хранение 14 дней
+# ежедневно в 03:15 — БД (pg_dump; PDF, чеки и логотипы хранятся в базе), хранение 14 дней
 15 3 * * * /opt/furniture/deploy/backup.sh >> /var/log/furniture-backup.log 2>&1
 
 # восстановление
-./deploy/restore.sh /var/backups/furniture/db-YYYYMMDD-HHMM.dump /var/backups/furniture/storage-YYYYMMDD-HHMM.tgz
+./deploy/restore.sh /var/backups/furniture/db-YYYYMMDD-HHMM.dump
 ```
 
 Рекомендуется дополнительно копировать каталог бэкапов во внешнее хранилище и периодически проверять

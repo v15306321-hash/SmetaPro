@@ -3,11 +3,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from pathlib import Path
 
 from sqlalchemy import select
 
-from app.config import get_settings
 from app.core.errors import NotFound, ValidationError
 from app.core.fmt import D, local_dt, money_round, qty
 from app.core.security import short_code
@@ -17,7 +15,7 @@ from app.services import orders as orders_svc
 from app.services import tariffs
 from app.services.accounts import Ctx
 from app.services.audit import log, notify
-from app.services.files import abs_path
+from app.services import files
 
 
 def build_pdf_data(ctx: Ctx, order: Order, uid: str, created_at: datetime, with_logo: bool) -> PdfData:
@@ -36,10 +34,15 @@ def build_pdf_data(ctx: Ctx, order: Order, uid: str, created_at: datetime, with_
             lines.append(PdfLine(name=it.name, size=size, pieces=qty(it.pieces), quantity=qty(it.quantity),
                                  unit=it.unit, unit_price=unit_price, total=D(it.price)))
         sections.append((name, lines))
-    logo = abs_path(ent.logo_path) if (with_logo and ent.logo_path) else None
+    logo = None
+    if with_logo and ent.logo_path:
+        try:
+            logo = files.load(ctx.db, ent.logo_path, ctx.eid).data
+        except Exception:
+            logo = None
     return PdfData(uid=uid, created_at=local_dt(created_at), company_name=ent.name, company_phone=ent.phone,
                    company_address=ent.address, company_email=ent.email, company_tax_id=ent.tax_id,
-                   logo_path=logo, order_number=order.number, order_title=order.title,
+                   logo=logo, order_number=order.number, order_title=order.title,
                    client_name=order.client_name, client_phone=order.client_phone,
                    client_address=order.client_address, sections=sections,
                    extra_label=ent.fixed_addition_label or "Дополнительные услуги",
@@ -58,11 +61,11 @@ def generate(ctx: Ctx, order_id: int) -> Estimate:
 
     now = utcnow()
     uid = f"EST-{local_dt(now):%y%m%d}-{short_code(5)}"
-    rel = f"estimates/{ctx.eid}/{uid}.pdf"
     with_logo = bool(sub.plan.features.get("pdf_logo"))
-    render(build_pdf_data(ctx, order, uid, now, with_logo), get_settings().storage_dir / rel)
+    pdf = render(build_pdf_data(ctx, order, uid, now, with_logo))
+    key = files.save_pdf(db, pdf, ctx.eid)
     est = Estimate(uid=uid, enterprise_id=ctx.eid, order_id=order.id, subscription_id=sub.id,
-                   total=order.price_total, file_path=rel, created_by_id=ctx.user.id, created_at=now)
+                   total=order.price_total, file_path=key, created_by_id=ctx.user.id, created_at=now)
     db.add(est)
     db.flush()
     log(db, "estimate.generated", actor_id=ctx.user.id, enterprise_id=ctx.eid, entity="estimate", entity_id=uid,
@@ -90,9 +93,9 @@ def recent(ctx: Ctx, limit: int = 10) -> list[Estimate]:
                                .order_by(Estimate.created_at.desc()).limit(limit)))
 
 
-def get_file(ctx: Ctx, uid: str) -> tuple[Estimate, Path]:
+def get_file(ctx: Ctx, uid: str) -> tuple[Estimate, bytes]:
     ctx.require("orders.view")
     est = ctx.db.scalar(select(Estimate).where(Estimate.uid == uid))
     if not est or est.enterprise_id != ctx.eid:
         raise NotFound("Смета не найдена.")
-    return est, abs_path(est.file_path)
+    return est, files.load(ctx.db, est.file_path, ctx.eid).data

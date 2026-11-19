@@ -1,9 +1,17 @@
-"""Безопасное сохранение загружаемых файлов (логотипы, чеки)."""
-import uuid
-from pathlib import Path
+"""Хранение файлов (логотипы, чеки, PDF-сметы) в базе данных.
 
-from app.config import get_settings
-from app.core.errors import ValidationError
+Почему в БД, а не на диске: на бесплатных/контейнерных хостингах (Render Free и др.) файловая система
+временная и очищается при перезапуске; в БД файлы сохраняются и попадают в её резервные копии.
+Объёмы небольшие: смета ~50 КБ, логотип и чек — до 8 МБ (проверяется при загрузке).
+"""
+from __future__ import annotations
+
+import uuid
+
+from sqlalchemy.orm import Session
+
+from app.core.errors import NotFound, ValidationError
+from app.models import StoredFile
 
 MAX_SIZE = 8 * 1024 * 1024
 _SIGNATURES = {
@@ -12,6 +20,7 @@ _SIGNATURES = {
     "pdf": [b"%PDF-"],
     "webp": [b"RIFF"],
 }
+CONTENT_TYPES = {"png": "image/png", "jpg": "image/jpeg", "pdf": "application/pdf", "webp": "image/webp"}
 
 
 def detect_type(data: bytes) -> str | None:
@@ -23,7 +32,7 @@ def detect_type(data: bytes) -> str | None:
     return None
 
 
-def _store(data: bytes, allowed: set[str], folder: str) -> str:
+def _store(db: Session, data: bytes, allowed: set[str], kind: str, enterprise_id: int | None) -> str:
     if not data:
         raise ValidationError("Файл пустой.")
     if len(data) > MAX_SIZE:
@@ -31,27 +40,35 @@ def _store(data: bytes, allowed: set[str], folder: str) -> str:
     ext = detect_type(data)  # тип определяется по содержимому, а не по имени файла
     if ext not in allowed:
         raise ValidationError("Неподдерживаемый формат файла. Допустимо: " + ", ".join(sorted(allowed)).upper())
-    root = get_settings().storage_dir.resolve()
-    target_dir = (root / folder).resolve()
-    if root not in target_dir.parents and target_dir != root:
-        raise ValidationError("Недопустимый путь.")
-    target_dir.mkdir(parents=True, exist_ok=True)
-    name = f"{uuid.uuid4().hex}.{ext}"
-    (target_dir / name).write_bytes(data)
-    return str(Path(folder) / name)
+    key = f"{kind[:3]}-{uuid.uuid4().hex}"  # ≤ 36 символов
+    db.add(StoredFile(id=key, enterprise_id=enterprise_id, kind=kind, content_type=CONTENT_TYPES[ext],
+                      size=len(data), data=data))
+    db.flush()
+    return key
 
 
-def save_image(data: bytes, _ext_hint: str = "", folder: str = "images") -> str:
-    return _store(data, {"png", "jpg"}, folder)
+def save_image(db: Session, data: bytes, enterprise_id: int | None, kind: str = "logo") -> str:
+    return _store(db, data, {"png", "jpg"}, kind, enterprise_id)
 
 
-def save_receipt(data: bytes, folder: str = "receipts") -> str:
-    return _store(data, {"png", "jpg", "pdf", "webp"}, folder)
+def save_receipt(db: Session, data: bytes, enterprise_id: int | None) -> str:
+    return _store(db, data, {"png", "jpg", "pdf", "webp"}, "receipt", enterprise_id)
 
 
-def abs_path(rel: str) -> Path:
-    root = get_settings().storage_dir.resolve()
-    p = (root / rel).resolve()
-    if root not in p.parents:
-        raise ValidationError("Недопустимый путь.")
-    return p
+def save_pdf(db: Session, data: bytes, enterprise_id: int | None) -> str:
+    return _store(db, data, {"pdf"}, "estimate", enterprise_id)
+
+
+def load(db: Session, key: str | None, enterprise_id: int | None = None) -> StoredFile:
+    """enterprise_id — дополнительная проверка принадлежности (изоляция предприятий)."""
+    f = db.get(StoredFile, key) if key else None
+    if not f or (enterprise_id is not None and f.enterprise_id != enterprise_id):
+        raise NotFound("Файл не найден.")
+    return f
+
+
+def delete(db: Session, key: str | None) -> None:
+    f = db.get(StoredFile, key) if key else None
+    if f:
+        db.delete(f)
+        db.flush()
