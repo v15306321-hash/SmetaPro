@@ -165,3 +165,29 @@ def test_sessions_revoke(client, db):
 
 
 _ = (PaymentRequest, tariffs)
+
+
+def test_database_url_normalized():
+    from app.config import Settings
+    assert Settings(database_url="postgres://u:p@h:5432/db").database_url == "postgresql+psycopg://u:p@h:5432/db"
+    assert Settings(database_url="postgresql://u:p@h/db").database_url == "postgresql+psycopg://u:p@h/db"
+    assert Settings(database_url="sqlite:///x.db").database_url == "sqlite:///x.db"
+
+
+def test_telegram_webhook_requires_secret(client, monkeypatch):
+    from app.config import get_settings
+    s = get_settings()
+    upd = {"update_id": 1, "message": {"message_id": 1, "date": 0, "chat": {"id": 5, "type": "private"},
+                                       "from": {"id": 5, "is_bot": False, "first_name": "A"}, "text": "/help"}}
+    assert client.post("/telegram/webhook", json=upd).status_code == 403          # polling-режим — закрыто
+    monkeypatch.setattr(s, "bot_mode", "webhook")
+    assert client.post("/telegram/webhook", json=upd,
+                       headers={"X-Telegram-Bot-Api-Secret-Token": "wrong"}).status_code == 403
+    fed = []
+
+    async def fake_feed(payload):
+        fed.append(payload["update_id"])
+    monkeypatch.setattr("app.bot.runner.feed_update", fake_feed)
+    r = client.post("/telegram/webhook", json=upd,
+                    headers={"X-Telegram-Bot-Api-Secret-Token": s.effective_webhook_secret})
+    assert r.status_code == 200 and fed == [1]

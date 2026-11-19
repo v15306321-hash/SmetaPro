@@ -1,0 +1,50 @@
+# Render Blueprint: одна кнопка создаёт базу PostgreSQL и веб-сервис (сайт + бот + фоновые задачи).
+# Инструкция: docs/RENDER.md. Значения с sync: false Render спросит при создании — их нет в репозитории.
+services:
+  - type: web
+    name: furniture-estimate
+    runtime: python
+    plan: starter            # бесплатный план не подходит: засыпает и не поддерживает диск
+    region: frankfurt        # ближайший к Узбекистану регион Render
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    preDeployCommand: alembic upgrade head && python -m app.cli seed
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips=*
+    healthCheckPath: /robots.txt
+    autoDeploy: true
+    disk:                    # PDF-сметы, чеки и логотипы (файловая система сервиса без диска очищается при деплое)
+      name: storage
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: APP_ENV
+        value: production
+      - key: BOT_MODE
+        value: webhook       # бот работает внутри веб-сервиса
+      - key: STORAGE_DIR
+        value: /var/data/storage
+      - key: DATABASE_URL
+        fromDatabase:
+          name: furniture-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: BASE_URL         # https://<имя-сервиса>.onrender.com или ваш домен
+        sync: false
+      - key: BOT_TOKEN
+        sync: false
+      - key: BOT_USERNAME
+        sync: false
+      - key: SUPERADMIN_TELEGRAM_IDS
+        sync: false
+      - key: SUPPORT_TELEGRAM
+        sync: false
+
+databases:
+  - name: furniture-db
+    plan: basic-256mb
+    region: frankfurt
+    databaseName: furniture
+    user: furniture

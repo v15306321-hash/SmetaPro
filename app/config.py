@@ -2,6 +2,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -36,6 +37,23 @@ class Settings(BaseSettings):
     support_phone: str = ""
     support_email: str = ""
 
+    @field_validator("database_url")
+    @classmethod
+    def _normalize_db_url(cls, v: str) -> str:
+        # Render, Heroku и др. выдают postgres:// или postgresql:// — указываем драйвер psycopg 3
+        for prefix in ("postgres://", "postgresql://"):
+            if v.startswith(prefix):
+                return "postgresql+psycopg://" + v[len(prefix):]
+        return v
+
+    @property
+    def effective_webhook_secret(self) -> str:
+        """Секрет заголовка webhook: WEBHOOK_SECRET или производный от SECRET_KEY."""
+        if self.webhook_secret:
+            return self.webhook_secret
+        import hashlib
+        return hashlib.sha256(("tg-webhook:" + self.secret_key).encode()).hexdigest()[:48]
+
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"
@@ -56,5 +74,8 @@ def get_settings() -> Settings:
         raise RuntimeError("SECRET_KEY must be set in production")
     if s.is_production and s.dev_login:
         raise RuntimeError("DEV_LOGIN must be disabled in production")
-    s.storage_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        s.storage_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass  # например, preDeploy на Render: постоянный диск ещё не подключён, файлы там не нужны
     return s

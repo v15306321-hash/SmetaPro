@@ -20,7 +20,8 @@ log = logging.getLogger("webhooks")
 async def telegram_webhook(request: Request,
                            x_telegram_bot_api_secret_token: str | None = Header(default=None)):
     s = get_settings()
-    if not s.webhook_secret or not hmac.compare_digest(x_telegram_bot_api_secret_token or "", s.webhook_secret):
+    if s.bot_mode != "webhook" or not hmac.compare_digest(x_telegram_bot_api_secret_token or "",
+                                                          s.effective_webhook_secret):
         return JSONResponse({"ok": False}, 403)
     from app.bot.runner import feed_update
     await feed_update(await request.json())

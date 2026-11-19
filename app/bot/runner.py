@@ -1,9 +1,10 @@
-"""Запуск Telegram-бота.
+"""Запуск Telegram-бота. Два режима (переменная BOT_MODE):
 
-  python -m app.bot.runner        polling (локально) или установка webhook (BOT_MODE=webhook)
-
-В режиме webhook апдейты принимает веб-приложение (POST /telegram/webhook) и передаёт их сюда
-через feed_update(); фоновые задачи (рассылка уведомлений, напоминания о подписке) запускает этот процесс.
+  polling  — отдельный процесс: python -m app.bot.runner (локально, docker-compose).
+  webhook  — бот работает внутри веб-сервиса (uvicorn app.main:app): при старте регистрируется
+             webhook https://BASE_URL/telegram/webhook, там же запускаются фоновые задачи
+             (рассылка уведомлений, напоминания о подписке). Отдельный процесс не нужен — так удобно
+             на Render и других PaaS. Запускать один экземпляр веб-сервиса.
 """
 from __future__ import annotations
 
@@ -155,6 +156,9 @@ _bot: Bot | None = None
 _dp: Dispatcher | None = None
 
 
+_bg_task: asyncio.Task | None = None
+
+
 async def feed_update(payload: dict) -> None:
     global _bot, _dp
     if _dp is None:
@@ -162,22 +166,41 @@ async def feed_update(payload: dict) -> None:
     await _dp.feed_update(_bot, Update.model_validate(payload, context={"bot": _bot}))
 
 
+async def start_embedded() -> None:
+    """Режим webhook внутри веб-сервиса: регистрация webhook и фоновые задачи."""
+    global _bot, _dp, _bg_task
+    s = get_settings()
+    _bot, _dp = build()
+    url = f"{s.base_url.rstrip('/')}/telegram/webhook"
+    try:
+        await _bot.set_webhook(url, secret_token=s.effective_webhook_secret, drop_pending_updates=False,
+                               allowed_updates=_dp.resolve_used_update_types())
+        log.info("Telegram webhook set: %s", url)
+    except Exception:
+        log.exception("Не удалось установить webhook — проверьте BOT_TOKEN и BASE_URL")
+    _bg_task = asyncio.create_task(background(_bot))
+
+
+async def stop_embedded() -> None:
+    if _bg_task:
+        _bg_task.cancel()
+    if _bot:
+        await _bot.session.close()
+
+
 async def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     s = get_settings()
     with session_scope() as db:
         ensure_seed(db)
+    if s.bot_mode == "webhook":
+        raise SystemExit("BOT_MODE=webhook: бот работает внутри веб-сервиса (uvicorn app.main:app), "
+                         "отдельный процесс не нужен.")
     bot, dp = build()
     bg = asyncio.create_task(background(bot))
     try:
-        if s.bot_mode == "webhook":
-            await bot.set_webhook(f"{s.base_url.rstrip('/')}/telegram/webhook", secret_token=s.webhook_secret,
-                                  drop_pending_updates=False, allowed_updates=dp.resolve_used_update_types())
-            log.info("Webhook set; this process runs background jobs only")
-            await asyncio.Event().wait()
-        else:
-            await bot.delete_webhook(drop_pending_updates=False)
-            await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+        await bot.delete_webhook(drop_pending_updates=False)
+        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
         bg.cancel()
         await bot.session.close()

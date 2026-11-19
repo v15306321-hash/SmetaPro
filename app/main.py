@@ -18,6 +18,7 @@ from app.web.deps import LoginRequired, render
 from app.web.ratelimit import RateLimitMiddleware
 
 log = logging.getLogger("app")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 
 @asynccontextmanager
@@ -28,7 +29,14 @@ async def lifespan(_app: FastAPI):
         dbmod.Base.metadata.create_all(dbmod.engine)
     with dbmod.session_scope() as db:
         ensure_seed(db)
+    embedded_bot = s.bot_mode == "webhook" and bool(s.bot_token)
+    if embedded_bot:
+        from app.bot.runner import start_embedded
+        await start_embedded()
     yield
+    if embedded_bot:
+        from app.bot.runner import stop_embedded
+        await stop_embedded()
 
 
 def create_app() -> FastAPI:
