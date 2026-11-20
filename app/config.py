@@ -77,4 +77,7 @@ def get_settings() -> Settings:
         raise RuntimeError("SECRET_KEY must be set in production")
     if s.is_production and s.dev_login:
         raise RuntimeError("DEV_LOGIN must be disabled in production")
+    if s.is_production and s.database_url.startswith("sqlite"):
+        # иначе сервис без DATABASE_URL тихо запустится на временной SQLite и потеряет данные
+        raise RuntimeError("DATABASE_URL must point to PostgreSQL in production (e.g. Neon connection string)")
     return s
