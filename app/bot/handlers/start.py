@@ -7,7 +7,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, ReplyKeyboardRemove
 
-from app.bot.core import BTN_SUB, BTN_WEB, HOME, SKIP, call, e, main_menu, rk
+from app import i18n
+from app.bot.core import BTN_LANG, BTN_SUB, BTN_WEB, HOME, SKIP, call, e, main_menu, rk
 from app.config import get_settings
 from app.core.permissions import ROLE_TITLES
 from app.services import accounts, auth_web, promo, staff, tariffs
@@ -26,6 +27,10 @@ class Reg(StatesGroup):
 
 class Login(StatesGroup):
     confirm = State()
+
+
+class Lang(StatesGroup):
+    pick = State()
 
 
 def status_text(ctx) -> str:
@@ -93,6 +98,13 @@ async def start(message: Message, command: CommandObject, state: FSMContext):
         await message.answer(f"Здравствуйте, {e(message.from_user.first_name)}!\n\n{status}{deal_text}",
                              reply_markup=main_menu(role))
         return
+    # Новый пользователь: сначала язык, затем регистрация предприятия
+    await ask_language(message, state, after="register")
+
+
+async def send_welcome(message: Message, state: FSMContext):
+    deal = promo.banner()
+    deal_text = f"\n\n{deal}" if deal else ""
     await message.answer(
         "👋 Добро пожаловать в <b>SmetaPro</b>!\n\n"
         "Здесь вы считаете стоимость мебели, отправляете клиентам PDF-сметы и видите, сколько зарабатывает цех."
@@ -100,6 +112,40 @@ async def start(message: Message, command: CommandObject, state: FSMContext):
         "Давайте зарегистрируем ваше предприятие.\n\n🏭 Как оно называется?",
         reply_markup=ReplyKeyboardRemove())
     await state.set_state(Reg.name)
+
+
+# ---------------------------------------------------------------- язык
+
+LANG_PROMPT = "🌐 Выберите язык · Tilni tanlang · Тілді таңдаңыз"
+LANG_BY_BUTTON = {title: code for code, title in i18n.LANGS.items()}
+
+
+async def ask_language(message: Message, state: FSMContext, after: str = "home"):
+    await state.set_state(Lang.pick)
+    await state.update_data(lang_after=after)
+    await message.answer(LANG_PROMPT, reply_markup=rk(*[[t] for t in i18n.LANGS.values()]))
+
+
+@router.message(F.text == BTN_LANG)
+@router.message(Command("lang"))
+async def lang_menu(message: Message, state: FSMContext):
+    await ask_language(message, state)
+
+
+@router.message(F.text.in_(set(LANG_BY_BUTTON)))
+async def lang_chosen(message: Message, state: FSMContext):
+    code = LANG_BY_BUTTON[message.text]
+    after = (await state.get_data()).get("lang_after", "home")
+
+    def work(ctx):
+        ctx.user.language = code
+        return True
+    if await call(message, work, need_enterprise=False):
+        i18n.set_user_lang(message.from_user.id, code)
+        if after == "register":
+            await send_welcome(message, state)
+        else:
+            await show_home(message, state, "✅ Язык изменён")
 
 
 @router.message(Reg.name, F.text)

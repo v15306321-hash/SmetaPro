@@ -40,6 +40,28 @@ def _ensure_fonts():
         _fonts_ready = True
 
 
+LABELS = {
+    "ru": dict(title="СМЕТА", date="от {}", client="ЗАКАЗЧИК", order="ЗАКАЗ", tax="ИНН", section="Раздел",
+               cols=["№", "Наименование", "Размер, мм", "Шт.", "Кол-во", "Ед.", "Цена", "Сумма"],
+               subtotal="Итого по разделу", total="ИТОГО К ОПЛАТЕ", words="Сумма прописью", note="Примечание",
+               fee="Стоимость работы цеха", footer="Смета {} · сформирована {} · SmetaPro", page="Стр. {}", cur="сум",
+               disclaimer="Документ является коммерческим предложением (сметой) и не является фискальным кассовым "
+                          "чеком. Окончательная стоимость может быть уточнена после замера и согласования проекта."),
+    "uz": dict(title="SMETA", date="{}", client="BUYURTMACHI", order="BUYURTMA", tax="STIR", section="Boʻlim",
+               cols=["№", "Nomi", "Oʻlcham, mm", "Dona", "Miqdor", "Birl.", "Narx", "Summa"],
+               subtotal="Boʻlim boʻyicha jami", total="TOʻLOVGA JAMI", words="Summa soʻz bilan", note="Izoh",
+               fee="Sex ishi narxi", footer="Smeta {} · tuzilgan {} · SmetaPro", page="Bet {}", cur="soʻm",
+               disclaimer="Hujjat tijorat taklifi (smeta) boʻlib, fiskal kassa cheki hisoblanmaydi. Yakuniy narx "
+                          "oʻlchov va loyiha kelishilgandan soʻng aniqlashtirilishi mumkin."),
+    "kk": dict(title="СМЕТА", date="{}", client="ТАПСЫРЫС БЕРУШІ", order="ТАПСЫРЫС", tax="ЖСН", section="Бөлім",
+               cols=["№", "Атауы", "Өлшемі, мм", "Дана", "Саны", "Бірл.", "Баға", "Сома"],
+               subtotal="Бөлім бойынша барлығы", total="ТӨЛЕУГЕ БАРЛЫҒЫ", words="Сома жазбаша", note="Ескертпе",
+               fee="Цех жұмысының құны", footer="Смета {} · жасалды {} · SmetaPro", page="Бет {}", cur="сум",
+               disclaimer="Құжат коммерциялық ұсыныс (смета) болып табылады және фискалдық кассалық түбіртек емес. "
+                          "Түпкілікті құн өлшеу мен жобаны келіскеннен кейін нақтылануы мүмкін."),
+}
+
+
 @dataclass
 class PdfLine:
     name: str
@@ -73,6 +95,7 @@ class PdfData:
     comment: str | None = None
     fee_label: str = "Стоимость работы цеха"
     fee_amount: Decimal = Decimal(0)
+    lang: str = "ru"
 
 
 def _styles():
@@ -99,6 +122,8 @@ def _esc(s: str | None) -> str:
 def render(data: PdfData) -> bytes:
     _ensure_fonts()
     st = _styles()
+    L = LABELS.get(data.lang, LABELS["ru"])
+    cur = L["cur"]
     out = io.BytesIO()
     W = A4[0] - 30 * mm
 
@@ -107,8 +132,8 @@ def render(data: PdfData) -> bytes:
         canvas.setFont("Sans", 7)
         canvas.setFillColor(MUTED)
         canvas.drawString(15 * mm, 10 * mm,
-                          f"Смета {data.uid} · сформирована {data.created_at.strftime('%d.%m.%Y %H:%M')} · SmetaPro")
-        canvas.drawRightString(A4[0] - 15 * mm, 10 * mm, f"Стр. {doc.page}")
+                          L["footer"].format(data.uid, data.created_at.strftime('%d.%m.%Y %H:%M')))
+        canvas.drawRightString(A4[0] - 15 * mm, 10 * mm, L["page"].format(doc.page))
         canvas.setStrokeColor(ACCENT)
         canvas.setLineWidth(2)
         canvas.line(15 * mm, A4[1] - 10 * mm, A4[0] - 15 * mm, A4[1] - 10 * mm)
@@ -138,11 +163,11 @@ def render(data: PdfData) -> bytes:
     if data.company_address:
         left.append(Paragraph(_esc(data.company_address), st["small"]))
     if data.company_tax_id:
-        left.append(Paragraph(f"ИНН: {_esc(data.company_tax_id)}", st["small"]))
+        left.append(Paragraph(f"{L['tax']}: {_esc(data.company_tax_id)}", st["small"]))
     right = [
-        Paragraph("СМЕТА", ParagraphStyle("t", parent=st["h1"], alignment=TA_RIGHT)),
+        Paragraph(L["title"], ParagraphStyle("t", parent=st["h1"], alignment=TA_RIGHT)),
         Paragraph(f"№ {_esc(data.uid)}", st["right"]),
-        Paragraph(f"от {date_str(data.created_at)}", ParagraphStyle("r2", parent=st["small"], alignment=TA_RIGHT)),
+        Paragraph(L["date"].format(date_str(data.created_at)), ParagraphStyle("r2", parent=st["small"], alignment=TA_RIGHT)),
     ]
     head = Table([[left, right]], colWidths=[W * 0.6, W * 0.4])
     head.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0),
@@ -153,12 +178,12 @@ def render(data: PdfData) -> bytes:
     def info(label, value):
         return [Paragraph(label, st["label"]), Paragraph(_esc(value) or "—", st["body"])]
 
-    client = [Paragraph("ЗАКАЗЧИК", st["label"]), Paragraph(_esc(data.client_name) or "—", st["h2"])]
+    client = [Paragraph(L["client"], st["label"]), Paragraph(_esc(data.client_name) or "—", st["h2"])]
     if data.client_phone:
         client.append(Paragraph(_esc(data.client_phone), st["body"]))
     if data.client_address:
         client.append(Paragraph(_esc(data.client_address), st["small"]))
-    order = info("ЗАКАЗ", f"№ {data.order_number}" + (f" — {data.order_title}" if data.order_title else ""))
+    order = info(L["order"], f"№ {data.order_number}" + (f" — {data.order_title}" if data.order_title else ""))
     box = Table([[client, order]], colWidths=[W * 0.55, W * 0.45])
     box.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), ACCENT_SOFT), ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -174,7 +199,7 @@ def render(data: PdfData) -> bytes:
     letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     for idx, (section, lines) in enumerate(data.sections):
         rows = [[Paragraph(h, st["th_r"] if i >= 3 else st["th"]) for i, h in enumerate(
-            ["№", "Наименование", "Размер, мм", "Шт.", "Кол-во", "Ед.", "Цена", "Сумма"])]]
+            L["cols"])]]
         subtotal = Decimal(0)
         for n, ln in enumerate(lines, 1):
             rows.append([Paragraph(str(n), st["cell"]), Paragraph(_esc(ln.name), st["cell"]),
@@ -183,7 +208,7 @@ def render(data: PdfData) -> bytes:
                          Paragraph(money(ln.unit_price, ""), st["cell_r"]),
                          Paragraph(money(ln.total, ""), st["cell_r"])])
             subtotal += ln.total
-        rows.append(["", Paragraph("<b>Итого по разделу</b>", st["cell"]), "", "", "", "", "",
+        rows.append(["", Paragraph(f"<b>{L['subtotal']}</b>", st["cell"]), "", "", "", "", "",
                      Paragraph(f"<b>{money(subtotal, '')}</b>", st["cell_r"])])
         t = Table(rows, colWidths=cw, repeatRows=1)
         t.setStyle(TableStyle([
@@ -196,17 +221,17 @@ def render(data: PdfData) -> bytes:
             ("LEFTPADDING", (0, 0), (-1, -1), 1.6 * mm), ("RIGHTPADDING", (0, 0), (-1, -1), 1.6 * mm),
         ]))
         label = letters[idx] if idx < len(letters) else str(idx + 1)
-        story.append(KeepTogether([Paragraph(f"Раздел {label} · {_esc(section)}", st["h2"]), Spacer(1, 2 * mm), t]))
+        story.append(KeepTogether([Paragraph(f"{L['section']} {label} · {_esc(section)}", st["h2"]), Spacer(1, 2 * mm), t]))
         story.append(Spacer(1, 5 * mm))
 
     # ---- итоги
     tot_rows = []
     if data.fee_amount and data.fee_amount > 0:
-        tot_rows.append([Paragraph(_esc(data.fee_label), st["body"]), Paragraph(money(data.fee_amount), st["right"])])
+        tot_rows.append([Paragraph(_esc(L["fee"]), st["body"]), Paragraph(money(data.fee_amount, cur), st["right"])])
     if data.extra_amount and data.extra_amount > 0:
-        tot_rows.append([Paragraph(_esc(data.extra_label), st["body"]), Paragraph(money(data.extra_amount), st["right"])])
-    tot_rows.append([Paragraph("<b>ИТОГО К ОПЛАТЕ</b>", ParagraphStyle("tt", parent=st["body"], textColor=colors.white)),
-                     Paragraph(f"<b>{money(data.total)}</b>",
+        tot_rows.append([Paragraph(_esc(data.extra_label), st["body"]), Paragraph(money(data.extra_amount, cur), st["right"])])
+    tot_rows.append([Paragraph(f"<b>{L['total']}</b>", ParagraphStyle("tt", parent=st["body"], textColor=colors.white)),
+                     Paragraph(f"<b>{money(data.total, cur)}</b>",
                                ParagraphStyle("tv", parent=st["right"], textColor=colors.white, fontSize=11))])
     tt = Table(tot_rows, colWidths=[W * 0.32, W * 0.22], hAlign="RIGHT")
     tt.setStyle(TableStyle([
@@ -216,11 +241,10 @@ def render(data: PdfData) -> bytes:
         ("LEFTPADDING", (0, 0), (-1, -1), 3 * mm), ("RIGHTPADDING", (0, 0), (-1, -1), 3 * mm),
     ]))
     story += [tt, Spacer(1, 4 * mm),
-              Paragraph(f"Сумма прописью: {_esc(amount_in_words(data.total))}", st["body"])]
+              Paragraph(f"{L['words']}: {_esc(amount_in_words(data.total, data.lang))}", st["body"])]
     if data.comment:
-        story += [Spacer(1, 4 * mm), Paragraph(f"Примечание: {_esc(data.comment)}", st["small"])]
+        story += [Spacer(1, 4 * mm), Paragraph(f"{L['note']}: {_esc(data.comment)}", st["small"])]
     story += [Spacer(1, 10 * mm),
-              Paragraph("Документ является коммерческим предложением (сметой) и не является фискальным кассовым чеком. "
-                        "Окончательная стоимость может быть уточнена после замера и согласования проекта.", st["small"])]
+              Paragraph(L["disclaimer"], st["small"])]
     doc.build(story, onFirstPage=on_page, onLaterPages=on_page)
     return out.getvalue()

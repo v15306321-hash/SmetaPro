@@ -11,6 +11,7 @@ from aiogram.types import (Chat, Document, InlineKeyboardMarkup, Message, Messag
                            ReplyKeyboardMarkup, Update, User as TgUser)
 
 from app.bot.core import BTN_NEW, BTN_SUB, HOME, SKIP, TO_ORDER_LONG
+from app.bot.i18n_mw import TranslateOutgoing
 from app.bot.runner import build, deliver_notifications
 from app.models import Enterprise, Order, PaymentRequest, PaymentStatus, Subscription
 from app.services import tariffs
@@ -49,6 +50,7 @@ class TgClient:
     def __init__(self, tg_id: int, name: str = "Тест"):
         self.bot, self.dp = build()
         self.session = FakeSession()
+        self.session.middleware(TranslateOutgoing())   # как у настоящей сессии бота
         self.bot.session = self.session
         self.user = TgUser(id=tg_id, is_bot=False, first_name=name)
         self.chat = Chat(id=tg_id, type="private")
@@ -95,7 +97,8 @@ def _fresh_dialogs():
 @pytest.fixture()
 def owner(db):
     c = TgClient(31337, "Сардор")
-    assert "Как оно называется" in c.send("/start")
+    assert "Tilni tanlang" in c.send("/start")
+    assert "Как оно называется" in c.press("🇷🇺 Русский")
     assert "телефон предприятия" in c.send("Цех Сардора")
     c.press(SKIP)
     assert "регистрирован" in c.press(SKIP)
@@ -459,3 +462,33 @@ def test_delete_order(db, owner):
     c.press("✅ Да")
     assert any("Заказ удалён" in t for t in c.session.texts())
     assert db.query(Order).count() == 0
+
+
+def test_uzbek_language_end_to_end(db):
+    """Бот на узбекском: кнопки и тексты переведены, нажатие узбекских кнопок работает."""
+    c = TgClient(70707, "Akmal")
+    c.send("/start")
+    assert "Korxonani" in c.press("🇺🇿 Oʻzbekcha") or "xush kelibsiz" in c.last()
+    assert "U qanday nomlanadi" in c.last()
+    assert "korxona telefonini" in c.send("Akmal mebel").lower()
+    c.press("⏩Oʻtkazib yuborish")
+    c.press("⏩Oʻtkazib yuborish")
+    assert {"🧮 Yangi hisob", "📋 Buyurtmalar", "👨‍💻 Texnik yordam", "🌐 Til"} <= set(c.buttons())
+    _activate(db)
+    assert "Yangi hisob ochildi" in c.press("🧮 Yangi hisob")
+    c.send("Dilnoza")
+    c.press("⏩Oʻtkazib yuborish")
+    c.press("1")
+    card = c.press("Oshxona garnituri")
+    assert "Buyurtma №1 — Oshxona garnituri" in card and "Mijoz uchun jami: 0 soʻm" in card
+    assert "Bazangizda hali" in c.press("📦Materiallar")
+    c.no_inline()
+    db.expire_all()
+    from app.models import User
+    assert db.query(User).filter_by(telegram_id=70707).one().language == "uz"
+    # смена языка обратно
+    c.press("🔙Buyurtma")
+    c.press("🏛️Bosh sahifa")
+    c.press("🌐 Til")
+    assert "Язык изменён" in c.press("🇷🇺 Русский")
+    assert "🧮 Новый расчёт" in c.buttons()

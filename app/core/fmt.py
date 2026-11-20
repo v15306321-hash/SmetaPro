@@ -131,7 +131,56 @@ def _triad(n: int, gender: int) -> list[str]:
     return [w for w in words if w]
 
 
-def amount_in_words(value) -> str:
+_WORDS = {
+    "uz": dict(units=["", "bir", "ikki", "uch", "toʻrt", "besh", "olti", "yetti", "sakkiz", "toʻqqiz"],
+               tens=["", "oʻn", "yigirma", "oʻttiz", "qirq", "ellik", "oltmish", "yetmish", "sakson", "toʻqson"],
+               hundred="yuz", scales=["", "ming", "million", "milliard"], zero="nol", cur="soʻm", sub="tiyin",
+               one_hundred="bir yuz"),
+    "kk": dict(units=["", "бір", "екі", "үш", "төрт", "бес", "алты", "жеті", "сегіз", "тоғыз"],
+               tens=["", "он", "жиырма", "отыз", "қырық", "елу", "алпыс", "жетпіс", "сексен", "тоқсан"],
+               hundred="жүз", scales=["", "мың", "миллион", "миллиард"], zero="нөл", cur="сум", sub="тиын",
+               one_hundred="жүз"),
+}
+
+
+def _amount_in_words_turkic(value, lang: str) -> str:
+    """Узбекский и казахский: без родов и склонений числительных — по разрядам."""
+    w = _WORDS[lang]
+    v = money_round(value)
+    whole = int(v)
+    tiyin = int((v - whole) * 100)
+    if whole == 0:
+        words = [w["zero"]]
+    else:
+        parts, n, scale = [], whole, 0
+        while n > 0 and scale < len(w["scales"]):
+            t = n % 1000
+            if t:
+                chunk = []
+                h, rest = t // 100, t % 100
+                if h:
+                    chunk.append(w["one_hundred"] if h == 1 else f"{w['units'][h]} {w['hundred']}")
+                if rest // 10:
+                    chunk.append(w["tens"][rest // 10])
+                if rest % 10:
+                    chunk.append(w["units"][rest % 10])
+                if scale:
+                    chunk.append(w["scales"][scale])
+                parts.append(" ".join(chunk))
+            n //= 1000
+            scale += 1
+        words = list(reversed(parts))
+    text = " ".join(words)
+    return f"{text[0].upper()}{text[1:]} {w['cur']} {tiyin:02d} {w['sub']}"
+
+
+def amount_in_words(value, lang: str = "ru") -> str:
+    if lang in _WORDS:
+        return _amount_in_words_turkic(value, lang)
+    return _amount_in_words_ru(value)
+
+
+def _amount_in_words_ru(value) -> str:
     """Сумма прописью: «Один миллион двести тысяч сум 00 тийин»."""
     v = money_round(value)
     whole = int(v)

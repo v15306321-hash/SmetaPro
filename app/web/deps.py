@@ -5,9 +5,11 @@ import hmac
 from pathlib import Path
 
 from fastapi import Depends, Request
+from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
+from app import i18n
 from app.config import get_settings
 from app.core import fmt
 from app.core.errors import DomainError, PermissionDenied
@@ -78,7 +80,32 @@ def render(request: Request, name: str, status_code: int = 200, **ctx) -> object
     from app.services import promo
     ctx.setdefault("promo_pct", promo.active_percent())
     ctx.setdefault("promo_banner", promo.banner())
-    return templates.TemplateResponse(request, name, ctx, status_code=status_code)
+    lang = resolve_lang(request, ctx.get("user"))
+    ctx["lang"] = lang
+    ctx["langs"] = i18n.LANGS
+    html = templates.get_template(name).render(ctx)
+    if lang != i18n.DEFAULT and not ctx.get("admin_mode"):   # админ-панель — только по-русски
+        html = i18n.tr(html, lang)
+    response = HTMLResponse(html, status_code=status_code)
+    if request.query_params.get("lang"):
+        response.set_cookie("lang", lang, max_age=365 * 86400, samesite="lax")
+    return response
+
+
+def resolve_lang(request: Request, user=None) -> str:
+    """?lang=… → cookie → язык пользователя (как в боте) → Accept-Language → русский."""
+    q = request.query_params.get("lang")
+    if q:
+        return i18n.normalize(q)
+    if request.cookies.get("lang"):
+        return i18n.normalize(request.cookies["lang"])
+    if user is not None and getattr(user, "language", None):
+        return i18n.normalize(user.language)
+    accept = (request.headers.get("accept-language") or "").lower()
+    for code in ("uz", "kk", "kz"):
+        if accept.startswith(code) or f",{code}" in accept.replace(" ", ""):
+            return i18n.normalize(code)
+    return i18n.DEFAULT
 
 
 def flash_redirect(url: str, ok: str | None = None, err: str | None = None):

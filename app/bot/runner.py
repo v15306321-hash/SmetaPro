@@ -21,7 +21,9 @@ from aiogram.types import Message, Update
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
+from app import i18n
 from app.bot.core import MENU_BUTTONS
+from app.bot.i18n_mw import LanguageIncoming, TranslateOutgoing
 from app.bot.handlers import admin, business, calc, expenses, start, stock, support
 from app.config import get_settings
 from app.db import session_scope
@@ -74,6 +76,7 @@ def build() -> tuple[Bot, Dispatcher]:
     if not s.bot_token:
         raise RuntimeError("BOT_TOKEN не задан")
     bot = Bot(s.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    bot.session.middleware(TranslateOutgoing())
     if _dispatcher is None:
         _dispatcher = _make_dispatcher()
     return bot, _dispatcher
@@ -82,7 +85,9 @@ def build() -> tuple[Bot, Dispatcher]:
 def _make_dispatcher() -> Dispatcher:
     dp = Dispatcher()
     dp.update.outer_middleware(DedupMiddleware())
+    dp.message.outer_middleware(LanguageIncoming())   # до MenuReset: кнопки на uz/kk → русские
     dp.message.outer_middleware(MenuResetMiddleware())
+    i18n.warm_up()
     dp.include_routers(support.router, start.router, admin.router, calc.router, stock.router, expenses.router,
                        business.router)
 
@@ -105,7 +110,7 @@ def _make_dispatcher() -> Dispatcher:
 async def deliver_notifications(bot: Bot) -> int:
     def fetch():
         with session_scope() as db:
-            rows = db.execute(select(Notification.id, Notification.text, User.telegram_id)
+            rows = db.execute(select(Notification.id, Notification.text, User.telegram_id, User.language)
                               .join(User, User.id == Notification.user_id)
                               .where(Notification.sent_at.is_(None), Notification.failed.is_(False))
                               .order_by(Notification.id).limit(25)).all()
@@ -121,7 +126,8 @@ async def deliver_notifications(bot: Bot) -> int:
                 n.failed = permanent or n.attempts >= 5
 
     sent = 0
-    for nid, text, tg_id in await asyncio.to_thread(fetch):
+    for nid, text, tg_id, lang in await asyncio.to_thread(fetch):
+        i18n.set_user_lang(tg_id, lang)
         if not tg_id:
             await asyncio.to_thread(mark, nid, False, True)
             continue

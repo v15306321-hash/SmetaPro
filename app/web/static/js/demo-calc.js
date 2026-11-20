@@ -11,8 +11,10 @@
     u: "M20 64V15h110v49",
     par: "M20 18h110M20 56h110",
   };
+  const T = Object.assign({ body: "Корпус и фасады", hw: "Фурнитура и комплектующие", work: "Сборка и монтаж",
+    empty: "Укажите размеры", mp: "м.п.", cur: "сум" }, window.CALC_TEXT || {});
   let shape = "u";
-  const fmt = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ".") + " сум";
+  const fmt = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ".") + " " + T.cur;
   const num = (v) => parseFloat(String(v || "").replace(",", ".")) || 0;
 
   function setShape(s) {
@@ -34,13 +36,13 @@
     const hw = body * 0.18;
     const work = body * 0.12;
     const lines = [
-      [`Корпус и фасады (${label}), ${meters.toFixed(1).replace(".", ",")} м.п.`, body],
-      ["Фурнитура и комплектующие", hw],
-      ["Сборка и монтаж", work],
+      [`${T.body} (${label}), ${meters.toFixed(1).replace(".", ",")} ${T.mp}`, body],
+      [T.hw, hw],
+      [T.work, work],
     ];
     document.getElementById("calc-lines").innerHTML = meters
       ? lines.map(([n, v]) => `<li><span>${n}</span><span>${fmt(v)}</span></li>`).join("")
-      : "<li><span>Укажите размеры</span><span></span></li>";
+      : `<li><span>${T.empty}</span><span></span></li>`;
     document.getElementById("calc-total").textContent = meters ? fmt(body + hw + work) : "—";
   }
 

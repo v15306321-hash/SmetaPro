@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru">
+<html lang="{{ lang or 'ru' }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -33,8 +33,10 @@
       <a href="/how-it-works" class="{{ 'active' if page=='how' }}">Как это работает</a>
       <a href="/faq" class="{{ 'active' if page=='faq' }}">FAQ</a>
       <a href="/contacts" class="{{ 'active' if page=='contacts' }}">Контакты</a>
+      <a href="{{ '/cabinet' if user else '/login' }}" class="nav-mobile-only">{{ 'Кабинет' if user else 'Войти' }}</a>
     </nav>
     <div class="header-cta">
+      <nav class="lang-switch" aria-label="Язык">{% for code in ['ru', 'uz', 'kk'] %}<a href="?lang={{ code }}" hreflang="{{ code }}" class="{{ 'active' if lang == code }}">{{ {'ru': 'RU', 'uz': 'UZ', 'kk': 'KZ'}[code] }}</a>{% endfor %}</nav>
       {% if user %}
         <a class="btn btn-sm" href="/cabinet">Кабинет</a>
       {% else %}

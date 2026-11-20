@@ -19,7 +19,10 @@ from app.services import files
 
 
 def build_pdf_data(ctx: Ctx, order: Order, uid: str, created_at: datetime, with_logo: bool) -> PdfData:
+    from app import i18n
     ent = ctx.enterprise
+    lang = i18n.normalize(ctx.user.language)
+    t = lambda text: i18n.tr(text, lang)  # noqa: E731 — названия изделий из списка и единицы
     sections = []
     for name, items in orders_svc.grouped_items(order):
         lines = []
@@ -32,8 +35,8 @@ def build_pdf_data(ctx: Ctx, order: Order, uid: str, created_at: datetime, with_
             q = D(it.quantity)
             unit_price = money_round(D(it.price) / q) if q else Decimal(0)
             lines.append(PdfLine(name=it.name, size=size, pieces=qty(it.pieces), quantity=qty(it.quantity),
-                                 unit=it.unit, unit_price=unit_price, total=D(it.price)))
-        sections.append((name, lines))
+                                 unit=t(it.unit), unit_price=unit_price, total=D(it.price)))
+        sections.append((t(name), lines))
     logo = None
     if with_logo and ent.logo_path:
         try:
@@ -42,12 +45,12 @@ def build_pdf_data(ctx: Ctx, order: Order, uid: str, created_at: datetime, with_
             logo = None
     return PdfData(uid=uid, created_at=local_dt(created_at), company_name=ent.name, company_phone=ent.phone,
                    company_address=ent.address, company_email=ent.email, company_tax_id=ent.tax_id,
-                   logo=logo, order_number=order.number, order_title=order.title,
+                   logo=logo, order_number=order.number, order_title=t(order.title),
                    client_name=order.client_name, client_phone=order.client_phone,
                    client_address=order.client_address, sections=sections,
-                   extra_label=ent.fixed_addition_label or "Дополнительные услуги",
+                   extra_label=t(ent.fixed_addition_label or "Дополнительные услуги"),
                    extra_amount=D(order.fixed_addition), total=D(order.price_total),
-                   fee_label="Стоимость работы цеха", fee_amount=D(order.workshop_fee))
+                   fee_label="Стоимость работы цеха", fee_amount=D(order.workshop_fee), lang=lang)
 
 
 def generate(ctx: Ctx, order_id: int) -> Estimate:

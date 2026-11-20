@@ -191,3 +191,31 @@ def test_telegram_webhook_requires_secret(client, monkeypatch):
     r = client.post("/telegram/webhook", json=upd,
                     headers={"X-Telegram-Bot-Api-Secret-Token": s.effective_webhook_secret})
     assert r.status_code == 200 and fed == [1]
+
+
+@pytest.mark.parametrize("lang,expect,absent", [
+    ("uz", "Daqiqalarda smeta", "Сметы за минуты"),
+    ("kk", "Бірнеше минутта смета", "Сметы за минуты"),
+])
+def test_site_languages(client, lang, expect, absent):
+    r = client.get("/", params={"lang": lang})
+    assert r.status_code == 200 and expect in r.text and absent not in r.text
+    assert f'<html lang="{lang}">' in r.text and r.cookies.get("lang") == lang
+    # язык запоминается в cookie
+    assert "Tariflar" in client.get("/pricing").text if lang == "uz" else "Тарифтер" in client.get("/pricing").text
+    client.cookies.clear()
+
+
+def test_estimate_pdf_language(db):
+    from app.services import estimates, orders
+    from app.models import ItemKind
+    ctx = make_enterprise(db, "PRO")
+    ctx.user.language = "uz"
+    o = orders.create(ctx, title="Кухонный гарнитур", client_name="Dilnoza")
+    orders.add_item(ctx, o.id, kind=ItemKind.material, name="LDSP", unit="лист", unit_cost=500000, quantity=2,
+                    section="Кухонный гарнитур")
+    data = estimates.build_pdf_data(ctx, o, "EST-TEST", o.created_at, False)
+    assert data.lang == "uz" and data.sections[0][0] == "Oshxona garnituri" and data.sections[0][1][0].unit == "list"
+    from app.core.fmt import amount_in_words
+    assert amount_in_words(1000000, "uz") == "Bir million soʻm 00 tiyin"
+    assert estimates.generate(ctx, o.id).uid
