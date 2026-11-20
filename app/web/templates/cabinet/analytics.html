@@ -38,8 +38,9 @@
         <tr><td>Выручка (расчётная)</td><td class="num"><b>{{ s.revenue|money }}</b></td></tr>
         <tr><td>− Материалы</td><td class="num">{{ s.cost_materials|money }}</td></tr>
         <tr><td>− Фурнитура</td><td class="num">{{ s.cost_hardware|money }}</td></tr>
-        <tr><td>− Работы цеха</td><td class="num">{{ s.cost_works|money }}</td></tr>
-        <tr><td><b>= Валовая прибыль</b></td><td class="num"><b>{{ s.gross|money }}</b></td></tr>
+        <tr><td>− Технические работы</td><td class="num">{{ s.cost_works|money }}</td></tr>
+        <tr><td><b>= Стоимость работы цеха</b></td><td class="num"><b>{{ s.gross|money }}</b></td></tr>
+        <tr><td>− Оплата рабочим</td><td class="num">{{ s.workers|money }}</td></tr>
         <tr><td>− Производственные затраты</td><td class="num">{{ s.expenses|money }}</td></tr>
         <tr><td><b>= Расчётный результат</b></td><td class="num"><b>{{ s.result|money }}</b></td></tr>
       </tbody>

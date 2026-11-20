@@ -37,7 +37,8 @@ C_SWITCH = "🛋Сменить изделие"
 C_NEXT_PREFIX = "🛋Изделие №"
 MORE_ORDERS = "🔎 Ещё заказы"
 
-WORKS = ["Сборка", "Монтаж", "Сборка и монтаж", "Замер"]
+WORKS = ["Распил", "Кромка", "Присадка", "Фрезеровка", "Покраска", "Шлифовка", "Сборка", "Монтаж", "Доставка",
+         "Транспортировка"]
 OTHER_WORK = "Другая работа📝"
 PCT = [["0", "10", "20", "30"], ["40", "50", "70", "100"]]
 
@@ -48,14 +49,10 @@ class Calc(StatesGroup):
     count = State()
     product = State()
     card = State()
-    mk_mat = State()
-    mk_hw = State()
     mk_work = State()
-    mk_fixed = State()
     work_name = State()
     work_price = State()
     workers_count = State()
-    workers_pay = State()
     remove = State()
     status = State()
     switch = State()
@@ -93,21 +90,26 @@ def card_data(ctx: Ctx, order_id: int, product: str | None) -> tuple[str, dict]:
             if len(sections) > 1:
                 lines.append(f"🛋 <b>{e(section)}</b>")
             for kind, label in ((ItemKind.material, "📦 Материалы"), (ItemKind.hardware, "🔩 Фурнитура"),
-                                (ItemKind.work, "🛠 Работа цеха")):
+                                (ItemKind.work, "🛠 Тех. работы")):
                 group = [it for it in items if it.kind == kind]
                 if group:
                     lines.append(f"{label}: {e(_names(group))}")
             if len(sections) > 1:
                 lines.append("")
+    if o.workers:
+        lines.append("👥 Рабочие: " + "; ".join(
+            f"{e(w.name)} ({e(w.position)}) — {money(w.amount)}" for w in o.workers) + ".")
     if lines[-1] != "":
         lines.append("")
-    extra = f" · доплата {money(o.fixed_addition)}" if o.fixed_addition else ""
-    lines += [f"Наценки: материалы {qty(o.markup_materials)}% · фурнитура {qty(o.markup_hardware)}% · "
-              f"работа цеха {qty(o.markup_works)}%{extra}",
-              f"Себестоимость: {money(o.cost_total)}",
-              f"Доход от наценок: {money(o.markup_income)}",
-              f"💰 <b>Итого клиенту: {money(o.price_total)}</b>"]
-    info = dict(id=o.id, product=current, products=products, planned=planned, has_items=bool(o.items),
+    lines += [f"Себестоимость: {money(o.cost_total)}",
+              f"Стоимость работы цеха ({qty(o.markup_works)}%): {money(o.workshop_fee)}"]
+    if o.fixed_addition:
+        lines.append(f"Доплата: {money(o.fixed_addition)}")
+    lines.append(f"💰 <b>Итого клиенту: {money(o.price_total)}</b>")
+    if o.workers:
+        lines += ["", f"Оплата рабочим: {money(o.workers_cost)}", f"Прибыль цеха: {money(o.profit)}"]
+    info = dict(id=o.id, product=current, products=products, planned=planned,
+                has_items=bool(o.items) or bool(o.workers),
                 can_edit=ctx.can("orders.edit"), can_pdf=ctx.can("estimates.create"),
                 statuses=tariffs.has_feature(ctx.db, ctx.eid, "order_statuses") and ctx.can("orders.status"),
                 waste=tariffs.has_feature(ctx.db, ctx.eid, "waste") and ctx.can("waste.edit"))
@@ -291,75 +293,28 @@ async def card_back(message: Message, state: FSMContext):
     await orders_list(message, state)
 
 
-# ---------------------------------------------------------------- наценки заказа
-
-async def _ask_pct(message: Message, state: FSMContext, st: State, title: str, current, lead: str = ""):
-    await state.set_state(st)
-    await message.answer(f"{lead}💵 {title}, %\n\nСейчас: {qty(current)}%. Выберите или напишите своё число:",
-                         reply_markup=rk(*PCT, [TO_ORDER]))
-
+# ---------------------------------------------------------------- наценка (стоимость работы цеха)
 
 @router.message(Calc.card, F.text == C_MARKUP)
 async def mk_start(message: Message, state: FSMContext):
     data = await state.get_data()
-    cur = await call(message, lambda ctx: (lambda o: (o.markup_materials, o.markup_hardware, o.markup_works,
-                                                      o.fixed_addition))(orders.get(ctx, data["order_id"])))
-    if cur:
-        await state.update_data(mk_cur=[str(x) for x in cur])
-        await _ask_pct(message, state, Calc.mk_mat, "Наценка на материалы", cur[0])
-
-
-async def _read_pct(message: Message):
-    v = read_qty(message.text) if message.text.strip() != "0" else 0
-    if v is None or not 0 <= v <= 1000:
-        await message.answer("Напишите процент числом от 0 до 1000, например 25")
-        return None
-    return v
-
-
-@router.message(Calc.mk_mat, F.text)
-async def mk_mat(message: Message, state: FSMContext):
-    v = await _read_pct(message)
-    if v is not None:
-        await state.update_data(mk_mat=str(v))
-        cur = (await state.get_data())["mk_cur"]
-        await _ask_pct(message, state, Calc.mk_hw, "Наценка на фурнитуру", cur[1], "✅Отлично!\n\n")
-
-
-@router.message(Calc.mk_hw, F.text)
-async def mk_hw(message: Message, state: FSMContext):
-    v = await _read_pct(message)
-    if v is not None:
-        await state.update_data(mk_hw=str(v))
-        cur = (await state.get_data())["mk_cur"]
-        await _ask_pct(message, state, Calc.mk_work, "Наценка на работу цеха (сборка, монтаж и т.п.)",
-                       cur[2], "✅Отлично!\n\n")
+    cur = await call(message, lambda ctx: orders.get(ctx, data["order_id"]).markup_works)
+    if cur is not None:
+        await state.set_state(Calc.mk_work)
+        await message.answer(
+            "💵 Стоимость работы цеха — ваша наценка на общую сумму материалов, фурнитуры и технических работ.\n\n"
+            f"Сейчас: {qty(cur)}%. Выберите или напишите свой процент:", reply_markup=rk(*PCT, [TO_ORDER]))
 
 
 @router.message(Calc.mk_work, F.text)
 async def mk_work(message: Message, state: FSMContext):
-    v = await _read_pct(message)
-    if v is not None:
-        await state.update_data(mk_work=str(v))
-        cur = (await state.get_data())["mk_cur"]
-        await state.set_state(Calc.mk_fixed)
-        await message.answer(f"✅Отлично!\n\n💵 Фиксированная доплата к заказу, сум — например замер или доставка.\n\n"
-                             f"Сейчас: {money(cur[3])}. Напишите сумму или пропустите:",
-                             reply_markup=rk([SKIP, "0"], [TO_ORDER]))
-
-
-@router.message(Calc.mk_fixed, F.text)
-async def mk_fixed(message: Message, state: FSMContext):
-    data = await state.get_data()
-    fixed = None if message.text == SKIP else read_money(message.text)
-    if message.text != SKIP and fixed is None:
-        await message.answer("Напишите сумму цифрами, например 150.000")
+    v = 0 if message.text.strip() == "0" else read_qty(message.text)
+    if v is None or not 0 <= v <= 1000:
+        await message.answer("Напишите процент числом от 0 до 1000, например 25")
         return
-    ok = await call(message, lambda ctx: orders.set_markups(ctx, data["order_id"], materials=data["mk_mat"],
-                                                            hardware=data["mk_hw"], works=data["mk_work"],
-                                                            fixed=fixed).id)
-    if ok:
-        await show_card(message, state, "✅ Наценки сохранены!")
+    data = await state.get_data()
+    if await call(message, lambda ctx: orders.set_markups(ctx, data["order_id"], works=v).id):
+        await show_card(message, state, f"✅ Стоимость работы цеха: {qty(v)}%")
 
 
 # ---------------------------------------------------------------- работа цеха
@@ -367,7 +322,8 @@ async def mk_fixed(message: Message, state: FSMContext):
 @router.message(Calc.card, F.text == C_WORK)
 async def work_start(message: Message, state: FSMContext):
     await state.set_state(Calc.work_name)
-    await message.answer("🛠 Какую работу цеха добавить?", reply_markup=rk(*grid(WORKS, 2), [OTHER_WORK], [TO_ORDER]))
+    await message.answer("🛠 Какую техническую работу добавить? Наценка на неё отдельно не начисляется — "
+                         "она входит в общую сумму.", reply_markup=rk(*grid(WORKS, 2), [OTHER_WORK], [TO_ORDER]))
 
 
 @router.message(Calc.work_name, F.text == OTHER_WORK)
@@ -381,7 +337,7 @@ async def work_name(message: Message, state: FSMContext):
     await state.update_data(work_name=name)
     prices = await call(message, lambda ctx: orders.recent_work_prices(ctx)) or []
     await state.set_state(Calc.work_price)
-    await message.answer(f"✅Отлично!\n\n💵 Укажите стоимость работы «{e(name)}» (себестоимость для цеха):",
+    await message.answer(f"✅Отлично!\n\n💵 Укажите стоимость работы «{e(name)}»:",
                          reply_markup=rk(*grid(price_buttons(prices), 3), [MANUAL], [TO_ORDER]))
 
 
@@ -404,52 +360,54 @@ async def work_price(message: Message, state: FSMContext):
         await show_card(message, state, f"✅ Работа «{e(data['work_name'])}» добавлена — {money(price)}")
 
 
-# ---------------------------------------------------------------- рабочие
+# ---------------------------------------------------------------- рабочие (сотрудники цеха)
+
+NEW_EMPLOYEE = "➕ Новый сотрудник"
+
 
 @router.message(Calc.card, F.text == C_WORKERS)
 async def workers_start(message: Message, state: FSMContext):
-    data = await state.get_data()
+    from app.services import employees
+
+    def work(ctx):
+        return ([(emp.id, f"{emp.name} · {emp.position} · {employees.pay_text(emp)}"[:60])
+                 for emp in employees.list_active(ctx)], ctx.can("staff.manage"))
+    res = await call(message, work)
+    if not res:
+        return
+    staff_list, can_add = res
     await state.set_state(Calc.workers_count)
-    await message.answer(f"👥 Сколько рабочих будет изготавливать «{e(data.get('product') or 'изделие')}»?",
-                         reply_markup=numbers_kb([TO_ORDER]))
+    await state.update_data(worker_map={t: eid for eid, t in staff_list})
+    rows = [[t] for _, t in staff_list] + ([[NEW_EMPLOYEE]] if can_add else []) + [[TO_ORDER]]
+    if staff_list:
+        text = "👥 Кого добавить к заказу? Выберите сотрудника:"
+    else:
+        text = ("👥 У вас пока нет сотрудников.\n\nДобавьте сотрудника — укажете должность, имя и оплату, "
+                "и он появится в этом списке." if can_add else "👥 Сотрудников пока нет. Их добавляет владелец.")
+    await message.answer(text, reply_markup=rk(*rows))
 
 
-@router.message(Calc.workers_count, F.text == OTHER_NUMBER)
-async def workers_other(message: Message):
-    await message.answer("✍ Напишите количество рабочих цифрой:")
+@router.message(Calc.workers_count, F.text == NEW_EMPLOYEE)
+async def workers_new(message: Message, state: FSMContext):
+    from app.bot.handlers.business import start_add_employee
+    await start_add_employee(message, state, origin="order")
 
 
 @router.message(Calc.workers_count, F.text)
-async def workers_count(message: Message, state: FSMContext):
-    n = read_qty(message.text)
-    if not n or n != int(n) or n > 500:
-        await message.answer("Напишите целое число, например 3")
+async def workers_pick(message: Message, state: FSMContext):
+    eid = (await state.get_data()).get("worker_map", {}).get(message.text)
+    if not eid:
+        await message.answer("Выберите сотрудника кнопкой ниже 👇")
         return
-    await state.update_data(workers=int(n))
-    prices = await call(message, lambda ctx: orders.recent_work_prices(ctx)) or []
-    await state.set_state(Calc.workers_pay)
-    await message.answer("✅Отлично!\n\n💵 Сколько платите одному рабочему за этот заказ?",
-                         reply_markup=rk(*grid(price_buttons(prices), 3), [MANUAL], [TO_ORDER]))
+    await assign_worker(message, state, eid)
 
 
-@router.message(Calc.workers_pay, F.text == MANUAL)
-async def workers_pay_manual(message: Message):
-    await message.answer("✍ Напишите сумму цифрами, например 300.000")
-
-
-@router.message(Calc.workers_pay, F.text)
-async def workers_pay(message: Message, state: FSMContext):
-    pay = read_money(message.text)
-    if pay is None:
-        await message.answer("Напишите сумму цифрами, например 300.000")
-        return
+async def assign_worker(message: Message, state: FSMContext, employee_id: int):
     data = await state.get_data()
-    n = data["workers"]
-    ok = await call(message, lambda ctx: orders.add_item(ctx, data["order_id"], kind=ItemKind.work,
-                                                         name="Оплата рабочим", unit="чел.", unit_cost=pay,
-                                                         quantity=n, section=data.get("product") or "Изделие").id)
-    if ok:
-        await show_card(message, state, f"✅ Добавлено: {n} чел. × {money(pay)} = {money(pay * n)}")
+    res = await call(message, lambda ctx: (lambda w: (w.name, str(w.amount)))(
+        orders.add_worker(ctx, data["order_id"], employee_id)))
+    if res:
+        await show_card(message, state, f"✅ {e(res[0])} добавлен к заказу — {money(res[1])}")
 
 
 # ---------------------------------------------------------------- PDF
@@ -478,8 +436,13 @@ async def make_pdf(message: Message, state: FSMContext):
 @router.message(Calc.card, F.text == C_REMOVE)
 async def remove_start(message: Message, state: FSMContext):
     data = await state.get_data()
-    items = await call(message, lambda ctx: [(i.id, f"❌ {n}. {i.name} — {money(i.price, '')}"[:60])
-                                             for n, i in enumerate(orders.get(ctx, data["order_id"]).items, 1)])
+    def work(ctx):
+        o = orders.get(ctx, data["order_id"])
+        rows = [(["item", i.id], f"❌ {n}. {i.name} — {money(i.price, '').strip()}"[:60])
+                for n, i in enumerate(o.items, 1)]
+        rows += [(["worker", w.id], f"❌ 👥 {w.name} — {money(w.amount, '').strip()}"[:60]) for w in o.workers]
+        return rows
+    items = await call(message, work)
     if items:
         await state.set_state(Calc.remove)
         await state.update_data(remove_map={t: iid for iid, t in items})
@@ -489,12 +452,14 @@ async def remove_start(message: Message, state: FSMContext):
 @router.message(Calc.remove, F.text)
 async def remove_pick(message: Message, state: FSMContext):
     data = await state.get_data()
-    iid = data.get("remove_map", {}).get(message.text)
-    if message.text == BACK or not iid:
+    target = data.get("remove_map", {}).get(message.text)
+    if message.text == BACK or not target:
         await show_card(message, state)
         return
-    if await call(message, lambda ctx: orders.remove_item(ctx, data["order_id"], iid).id):
-        await show_card(message, state, "🗑 Позиция удалена.")
+    kind, tid = target
+    fn = orders.remove_worker if kind == "worker" else orders.remove_item
+    if await call(message, lambda ctx: fn(ctx, data["order_id"], tid).id):
+        await show_card(message, state, "🗑 Удалено из заказа.")
 
 
 # ---------------------------------------------------------------- статус (PRO)

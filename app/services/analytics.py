@@ -5,7 +5,8 @@
   Себестоимость заказов      = Σ (материалы + фурнитура + работы цеха) по себестоимости
   Валовая прибыль            = Выручка − Себестоимость (= доход от наценок и фиксированных сумм)
   Производственные затраты   = Σ записей раздела «Производственные затраты» за период
-  Расчётный фин. результат   = Валовая прибыль − Производственные затраты
+  Оплата рабочим             = Σ оплаты сотрудникам, назначенным на заказы
+  Расчётный фин. результат   = Валовая прибыль − Оплата рабочим − Производственные затраты
 Это НЕ фактическая чистая прибыль: налоги, аренда, зарплаты и прочие обязательства не учитываются.
 """
 from __future__ import annotations
@@ -71,19 +72,21 @@ def summary(ctx: Ctx, start: date, end: date, completed_only: bool = False) -> d
                             func.coalesce(func.sum(Order.cost_materials), 0),
                             func.coalesce(func.sum(Order.cost_hardware), 0),
                             func.coalesce(func.sum(Order.cost_works), 0),
-                            func.coalesce(func.sum(Order.cost_total), 0)).where(*conds)).one()
+                            func.coalesce(func.sum(Order.cost_total), 0),
+                            func.coalesce(func.sum(Order.workers_cost), 0)).where(*conds)).one()
     count, revenue, c_mat, c_hw, c_work, cost = row[0], D(row[1]), D(row[2]), D(row[3]), D(row[4]), D(row[5])
+    workers = D(row[6])
     expenses = D(db.scalar(select(func.coalesce(func.sum(Expense.amount), 0))
                            .where(Expense.enterprise_id == ctx.eid, Expense.spent_on >= start,
                                   Expense.spent_on <= end)))
-    gross = revenue - cost
-    result = gross - expenses
+    gross = revenue - cost          # стоимость работы цеха (наценка) + доплаты
+    result = gross - workers - expenses
     pct = lambda a, b: (D(a) / D(b) * 100).quantize(Decimal("0.1")) if b else Decimal(0)  # noqa: E731
     return dict(
         start=start, end=end, orders=count, revenue=revenue, cost=cost,
         cost_materials=c_mat, cost_hardware=c_hw, cost_works=c_work,
         materials_and_hardware=c_mat + c_hw, gross=gross, markup_income=gross,
-        expenses=expenses, result=result, gross_margin=pct(gross, revenue), result_margin=pct(result, revenue),
+        expenses=expenses, workers=workers, result=result, gross_margin=pct(gross, revenue), result_margin=pct(result, revenue),
         avg_check=(revenue / count).quantize(Decimal("1")) if count else Decimal(0),
     )
 
@@ -112,7 +115,7 @@ def monthly_series(ctx: Ctx, months: int = 7, today: date | None = None) -> dict
         sm = summary(ctx, s, e)
         labels.append(f"{MONTHS[s.month - 1]} {str(s.year)[2:]}")
         revenue.append(float(sm["revenue"]))
-        costs.append(float(sm["cost"] + sm["expenses"]))
+        costs.append(float(sm["cost"] + sm["expenses"] + sm["workers"]))
         result.append(float(sm["result"]))
     return dict(labels=labels, revenue=revenue, costs=costs, result=result)
 

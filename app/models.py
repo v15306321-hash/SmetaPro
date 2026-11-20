@@ -32,6 +32,7 @@ class Role(str, enum.Enum):
     admin = "admin"
     master = "master"
     manager = "manager"
+    employee = "employee"   # сотрудник с доступом к расчётам (без подписки, сотрудников, настроек)
 
 
 class OrderStatus(str, enum.Enum):
@@ -136,6 +137,24 @@ class Invitation(Base):
     used_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     used_at: Mapped[datetime | None] = mapped_column(DateTime)
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+    employee_id: Mapped[int | None] = mapped_column(ForeignKey("employees.id", name="fk_invitations_employee"))
+
+
+class Employee(Base):
+    """Сотрудник предприятия: должность и оплата. Доступ к боту — по желанию владельца
+    (тогда user_id заполнен и есть membership с ролью employee)."""
+    __tablename__ = "employees"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    enterprise_id: Mapped[int] = mapped_column(ForeignKey("enterprises.id"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    position: Mapped[str] = mapped_column(String(80))
+    pay_type: Mapped[str] = mapped_column(String(10))           # percent | fixed
+    pay_rate: Mapped[Decimal] = mapped_column(Numeric(14, 2))   # % от суммы заказа или сумма за заказ
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    fired_at: Mapped[datetime | None] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 # ---------------------------------------------------------------- tariffs / billing
@@ -272,6 +291,8 @@ class Order(Base):
     # Изделия заказа по порядку («Кухонный гарнитур», «Шкаф-купе»…) и сколько их запланировано
     products: Mapped[list | None] = mapped_column(JSON)
     products_planned: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    # Оплата рабочим по заказу (расход цеха, клиенту не добавляется)
+    workers_cost: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), server_default="0")
     # Наценки зафиксированы в заказе, чтобы изменение настроек не меняло старые расчёты
     markup_materials: Mapped[Decimal] = mapped_column(Numeric(7, 2))
     markup_hardware: Mapped[Decimal] = mapped_column(Numeric(7, 2))
@@ -289,10 +310,23 @@ class Order(Base):
 
     items: Mapped[list["OrderItem"]] = relationship(
         back_populates="order", cascade="all, delete-orphan", order_by="OrderItem.id")
+    workers: Mapped[list["OrderWorker"]] = relationship(
+        cascade="all, delete-orphan", order_by="OrderWorker.id")
 
     @property
     def markup_income(self) -> Decimal:
+        """Стоимость работы цеха (наценка) + фиксированная доплата."""
         return (self.price_total or 0) - (self.cost_total or 0)
+
+    @property
+    def workshop_fee(self) -> Decimal:
+        """Стоимость работы цеха — наценка на общую сумму материалов и технических работ."""
+        return self.markup_income - (self.fixed_addition or 0) if self.items else Decimal(0)
+
+    @property
+    def profit(self) -> Decimal:
+        """Прибыль цеха по заказу: стоимость работы цеха и доплата минус оплата рабочим."""
+        return self.markup_income - (self.workers_cost or 0)
 
 
 class OrderItem(Base):
@@ -314,6 +348,20 @@ class OrderItem(Base):
     price: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"))
 
     order: Mapped[Order] = relationship(back_populates="items")
+
+
+class OrderWorker(Base):
+    """Рабочий, назначенный на заказ. Имя, должность и ставка копируются на момент назначения."""
+    __tablename__ = "order_workers"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id", ondelete="CASCADE"), index=True)
+    employee_id: Mapped[int | None] = mapped_column(ForeignKey("employees.id", ondelete="SET NULL"))
+    name: Mapped[str] = mapped_column(String(120))
+    position: Mapped[str] = mapped_column(String(80))
+    pay_type: Mapped[str] = mapped_column(String(10))
+    pay_rate: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"))
 
 
 class OrderStatusHistory(Base):

@@ -186,10 +186,19 @@ def payment_cancel(payment_id: int, ctx: Ctx = Depends(require_ctx)):
 @router.get("/staff")
 def staff_page(request: Request, invite: str | None = None, ctx: Ctx = Depends(require_ctx)):
     _need_enterprise(ctx)
+    from app.services import employees as employees_svc
     return page(request, ctx, "cabinet/staff.html", "staff", members=staff.members(ctx),
+                employees=employees_svc.list_active(ctx), pay_text=employees_svc.pay_text,
                 invitations=staff.pending_invitations(ctx), invite_link=invite, Role=Role,
                 ALL_PERMISSIONS={k: v for k, v in ALL_PERMISSIONS.items() if k not in OWNER_ONLY},
                 link_for=staff.invite_link)
+
+
+@router.post("/employees/{employee_id}/fire", **POST)
+def employee_fire(employee_id: int, ctx: Ctx = Depends(require_ctx)):
+    from app.services import employees as employees_svc
+    employees_svc.fire(ctx, employee_id)
+    return flash_redirect("/cabinet/staff", ok="Сотрудник уволен.")
 
 
 @router.post("/staff/invite", **POST)
@@ -247,15 +256,14 @@ def profile_enterprise(name: str = Form(...), phone: str = Form(""), address: st
 
 
 @router.post("/profile/markups", **POST)
-def profile_markups(materials: str = Form(...), hardware: str = Form(...), works: str = Form(...),
-                    fixed: str = Form("0"), ctx: Ctx = Depends(require_ctx)):
+def profile_markups(works: str = Form(...), fixed: str = Form("0"), ctx: Ctx = Depends(require_ctx)):
     try:
-        accounts.set_markups(ctx, materials=D(materials), hardware=D(hardware), works=D(works), fixed=D(fixed or 0))
+        accounts.set_markups(ctx, materials=0, hardware=0, works=D(works), fixed=D(fixed or 0))
     except DomainError:
         raise
     except Exception:
         raise DomainError("Проверьте введённые значения: нужны числа.")
-    return flash_redirect("/cabinet/profile", ok="Наценки сохранены.")
+    return flash_redirect("/cabinet/profile", ok="Стоимость работы цеха сохранена.")
 
 
 @router.post("/profile/logo", **POST)

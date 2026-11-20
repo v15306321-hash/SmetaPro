@@ -161,15 +161,19 @@ def test_waste_report(db):
 
 
 def test_analytics_summary(db):
+    from app.services import accounts, employees
     ctx = make_enterprise(db, "BUSINESS")
+    accounts.set_markups(ctx, works=30)
     o = orders.create(ctx, client_name="Цех A")
     orders.add_item(ctx, o.id, kind=ItemKind.material, name="ЛДСП", unit="шт", unit_cost=1000, quantity=10)
+    emp = employees.create(ctx, name="Мастер", position="Мастер", pay_type="fixed", pay_rate=300)
+    orders.add_worker(ctx, o.id, emp.id)
     cat = expenses.categories(ctx)[0]
     expenses.add(ctx, category_id=cat.id, amount=500)
     today = (utcnow() + timedelta(hours=5)).date()
     s = analytics.summary(ctx, *analytics.resolve_period("month", today))
     assert s["revenue"] == 13000 and s["cost"] == 10000 and s["gross"] == 3000
-    assert s["expenses"] == 500 and s["result"] == 2500 and s["orders"] == 1
+    assert s["workers"] == 300 and s["expenses"] == 500 and s["result"] == 2200 and s["orders"] == 1
     series = analytics.monthly_series(ctx, 3, today)
     assert series["revenue"][-1] == 13000.0
 
@@ -219,3 +223,35 @@ def test_logo_in_pdf_stored_in_db(db):
     assert data.startswith(b"%PDF") and b"/Subtype /Image" in data   # логотип встроен в PDF
     orders.delete(ctx, o.id)
     assert db.query(StoredFile).filter_by(kind="estimate").count() == 0  # PDF удалены вместе с заказом
+
+
+def test_employees_access_fire_and_leave(db):
+    from app.core.errors import PermissionDenied
+    from app.models import Employee
+    from app.services import accounts, employees, staff
+    from tests.conftest import make_user
+    owner = make_enterprise(db, "BUSINESS")                 # 2 пользователя, включая владельца
+    a = employees.create(owner, name="Дилшод", position="Дизайнер", pay_type="percent", pay_rate=7)
+    b = employees.create(owner, name="Сардор", position="Мастер", pay_type="fixed", pay_rate=200000)
+    link = employees.grant_access(owner, a.id)
+    code = link.split("inv_")[1]
+    u = make_user(db, "Дилшод")
+    staff.accept(db, u, code)
+    emp_ctx = accounts.load_ctx(db, u)
+    assert emp_ctx.role.value == "employee" and db.get(Employee, a.id).user_id == u.id
+    # сотрудник считает заказы, но не управляет подпиской и людьми
+    assert orders.create(emp_ctx, client_name="Клиент").id
+    assert not emp_ctx.can("billing.manage") and not emp_ctx.can("staff.manage") and not emp_ctx.can("analytics.view")
+    with pytest.raises(PermissionDenied):
+        employees.create(emp_ctx, name="X", position="Y", pay_type="fixed", pay_rate=1)
+    # лимит пользователей тарифа (BUSINESS = 2) — второму доступ не выдать, но в список он внесён
+    with pytest.raises(LimitReached):
+        employees.grant_access(owner, b.id)
+    # сотрудник уходит сам
+    assert employees.leave(emp_ctx) == owner.enterprise.name
+    assert accounts.load_ctx(db, u).enterprise is None and not db.get(Employee, a.id).is_active
+    # владелец увольняет
+    employees.fire(owner, b.id)
+    assert [x.id for x in employees.list_active(owner)] == []
+    with pytest.raises(PermissionDenied):
+        employees.leave(owner)

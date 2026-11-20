@@ -70,6 +70,12 @@ def accept(db: Session, user: User, code: str) -> Membership:
     else:
         m = Membership(user_id=user.id, enterprise_id=inv.enterprise_id, role=inv.role)
         db.add(m)
+    if inv.employee_id:
+        from app.models import Employee
+        emp = db.get(Employee, inv.employee_id)
+        if not emp or not emp.is_active:
+            raise NotFound("Приглашение больше не действует. Попросите владельца отправить новое.")
+        emp.user_id = user.id
     inv.used_by_id = user.id
     inv.used_at = utcnow()
     user.active_enterprise_id = inv.enterprise_id

@@ -1,37 +1,30 @@
 """Аналитика, сотрудники, подписка и оплата, рефералы, настройки — кнопками мини-меню."""
 from __future__ import annotations
 
-import re
-from datetime import datetime
 
 from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message
+from aiogram.types import Message, ReplyKeyboardRemove
 
-from app.bot.core import (BACK, BTN_ANALYTICS, BTN_REF, BTN_SETTINGS, BTN_STAFF, BTN_SUB, HOME, NO, SKIP, YES, call,
+from app.bot.core import (BACK, BTN_ANALYTICS, BTN_LEAVE, BTN_REF, BTN_SETTINGS, BTN_STAFF, BTN_SUB, HOME, NO, SKIP,
+                          YES, call,
                           e, grid, main_menu, read_money, read_qty, rk)
 from app.config import get_settings
-from app.core.fmt import TASHKENT_OFFSET, date_str, money, qty
-from app.core.permissions import ROLE_TITLES
-from app.models import Role
-from app.services import accounts, analytics, payments, referrals, staff, tariffs
+from app.core.errors import LimitReached
+from app.core.fmt import date_str, money, qty
+from app.services import accounts, employees, payments, referrals, tariffs
 
 router = Router(name="business")
 
 PCT = [["0", "10", "20", "30"], ["40", "50", "70", "100"]]
 
 
-class An(StatesGroup):
-    menu = State()
-    start = State()
-    end = State()
-
-
 class St(StatesGroup):
     menu = State()
     remove = State()
     confirm = State()
+    leave = State()
 
 
 class Sub(StatesGroup):
@@ -42,8 +35,6 @@ class Sub(StatesGroup):
 
 class Set(StatesGroup):
     menu = State()
-    mk_mat = State()
-    mk_hw = State()
     mk_work = State()
     mk_fixed = State()
     field = State()
@@ -52,95 +43,31 @@ class Set(StatesGroup):
 
 # ================================================================ аналитика
 
-PERIOD_BUTTONS = {"День": "day", "Неделя": "week", "Месяц": "month", "Год": "year"}
-CUSTOM = "📅 Свой период"
-
-
-def analytics_kb():
-    return rk(["День", "Неделя", "Месяц"], ["Год", CUSTOM], [HOME])
-
-
 @router.message(F.text == BTN_ANALYTICS)
 async def analytics_entry(message: Message, state: FSMContext):
     await state.clear()
-    await _analytics(message, state, "month")
-
-
-@router.message(An.menu, F.text.in_(set(PERIOD_BUTTONS)))
-async def analytics_period(message: Message, state: FSMContext):
-    await _analytics(message, state, PERIOD_BUTTONS[message.text])
-
-
-@router.message(An.menu, F.text == CUSTOM)
-async def analytics_custom(message: Message, state: FSMContext):
-    await state.set_state(An.start)
-    await message.answer("📅 С какой даты? Напишите в формате 01.09.2026", reply_markup=rk([BACK]))
-
-
-def _date(text: str):
-    m = re.search(r"(\d{1,2})[./-](\d{1,2})[./-](\d{4})", text)
-    if not m:
-        return None
-    try:
-        return datetime(int(m.group(3)), int(m.group(2)), int(m.group(1))).date()
-    except ValueError:
-        return None
-
-
-@router.message(An.start, F.text)
-async def analytics_start(message: Message, state: FSMContext):
-    if message.text == BACK:
-        await _analytics(message, state, "month")
-        return
-    d = _date(message.text)
-    if not d:
-        await message.answer("Не понял дату. Напишите так: 01.09.2026")
-        return
-    await state.update_data(an_start=d.isoformat())
-    await state.set_state(An.end)
-    await message.answer("✅Отлично!\n\n📅 По какую дату? Например 30.09.2026", reply_markup=rk([BACK]))
-
-
-@router.message(An.end, F.text)
-async def analytics_end(message: Message, state: FSMContext):
-    if message.text == BACK:
-        await analytics_custom(message, state)
-        return
-    d = _date(message.text)
-    if not d:
-        await message.answer("Не понял дату. Напишите так: 30.09.2026")
-        return
-    start = datetime.fromisoformat((await state.get_data())["an_start"]).date()
-    await _analytics(message, state, "custom", start, d)
-
-
-async def _analytics(message: Message, state: FSMContext, period, start=None, end=None):
-    def work(ctx):
-        today = (datetime.utcnow() + TASHKENT_OFFSET).date()
-        s, en = analytics.resolve_period(period, today, start, end)
-        x = analytics.summary(ctx, s, en)
-        return (f"📊 <b>Аналитика</b> · {analytics.PERIODS[period]}: {date_str(s)} — {date_str(en)}\n\n"
-                f"Заказов: {x['orders']} · средний чек {money(x['avg_check'])}\n"
-                f"Выручка (расчётная): <b>{money(x['revenue'])}</b>\n"
-                f"Себестоимость: {money(x['cost'])}\n"
-                f"  • материалы и фурнитура: {money(x['materials_and_hardware'])}\n"
-                f"  • работа цеха: {money(x['cost_works'])}\n"
-                f"Валовая прибыль (доход от наценок): <b>{money(x['gross'])}</b> · {qty(x['gross_margin'])}%\n"
-                f"Производственные затраты: {money(x['expenses'])}\n"
-                f"Расчётный фин. результат: <b>{money(x['result'])}</b> · {qty(x['result_margin'])}%\n\n"
-                "<i>Расчётный результат не является фактической чистой прибылью: налоги, аренда и зарплаты "
-                "не учитываются.</i>\n\n"
-                f"📈 Графики — в веб-кабинете: {get_settings().base_url.rstrip('/')}/cabinet/analytics")
-    text = await call(message, work, keyboard=main_menu())
-    if text:
-        await state.set_state(An.menu)
-        await message.answer(text, reply_markup=analytics_kb(), disable_web_page_preview=True)
+    url = f"{get_settings().base_url.rstrip('/')}/cabinet/analytics"
+    await message.answer(f"📊 <b>Аналитика</b> — с графиками в веб-кабинете:\n\n{url}\n\n"
+                         "Войдите через Telegram — подтверждение придёт сюда.",
+                         reply_markup=main_menu(), disable_web_page_preview=True)
 
 
 # ================================================================ сотрудники
 
-INVITE = {"➕ Менеджер": Role.manager, "➕ Мастер": Role.master, "➕ Администратор": Role.admin}
-REVOKE = "🚫 Отозвать доступ"
+S_ADD = "➕ Добавить сотрудника"
+S_FIRE = "🚫 Уволить сотрудника"
+S_ACCESS = "🔑 Дать доступ к сметам"
+OTHER_POSITION = "Другая должность📝"
+PAY_PCT_BTN = "💯 Процент от заказа"
+PAY_FIX_BTN = "💵 Фиксированная сумма"
+
+
+class Emp(StatesGroup):
+    position = State()
+    name = State()
+    pay_type = State()
+    pay_rate = State()
+    access = State()
 
 
 @router.message(F.text == BTN_STAFF)
@@ -152,66 +79,234 @@ async def staff_menu(message: Message, state: FSMContext, prefix: str = ""):
     await state.clear()
 
     def work(ctx):
-        ms = staff.members(ctx)
+        ctx.require("staff.view")
+        emps = employees.list_active(ctx)
         us = tariffs.usage(ctx.db, ctx.eid)
-        lines = [f"👥 <b>Сотрудники</b> · {us['users']}" + (f" из {us['users_limit']}" if us.get("users_limit") else "")]
-        for m in ms:
-            lines.append(f"• {e(m.user.full_name or m.user.telegram_username)} — {ROLE_TITLES[m.role]}")
-        return "\n".join(lines), ctx.can("staff.manage"), any(m.role != Role.owner for m in ms)
+        lines = ["👥 <b>Сотрудники</b>"]
+        if us.get("users_limit"):
+            lines.append(f"Доступ к боту: {us['users']} из {us['users_limit']} (включая вас)")
+        lines.append("")
+        if not emps:
+            lines.append("Сотрудников пока нет.")
+        for x in emps:
+            access = " · 🔑 доступ к сметам" if x.user_id else ""
+            lines.append(f"• {e(x.name)} — {e(x.position)} · {employees.pay_text(x)}{access}")
+        no_access = [x for x in emps if not x.user_id]
+        return "\n".join(lines), ctx.can("staff.manage"), bool(emps), bool(no_access)
     res = await call(message, work, keyboard=main_menu())
     if not res:
         return
-    text, can_manage, has_staff = res
+    text, can_manage, has_emps, has_no_access = res
     rows = []
     if can_manage:
-        rows = [["➕ Менеджер", "➕ Мастер"], ["➕ Администратор"]]
-        if has_staff:
-            rows.append([REVOKE])
+        rows.append([S_ADD])
+        if has_no_access:
+            rows.append([S_ACCESS])
+        if has_emps:
+            rows.append([S_FIRE])
     await state.set_state(St.menu)
-    await message.answer((prefix + "\n\n" if prefix else "") + text +
-                         "\n\n<i>Подробные права администратора настраиваются в веб-кабинете.</i>",
-                         reply_markup=rk(*rows, [HOME]))
+    await message.answer((prefix + "\n\n" if prefix else "") + text, reply_markup=rk(*rows, [HOME]))
 
 
-@router.message(St.menu, F.text.in_(set(INVITE)))
-async def staff_invite(message: Message, state: FSMContext):
-    role = INVITE[message.text]
-    link = await call(message, lambda ctx: staff.invite_link(staff.invite(ctx, role)))
+async def start_add_employee(message: Message, state: FSMContext, origin: str = "staff"):
+    """Добавление сотрудника по шагам. origin="order" — после создания он сразу назначается на заказ."""
+    await state.update_data(emp_origin=origin)
+    await state.set_state(Emp.position)
+    back = "🔙Заказ" if origin == "order" else BACK
+    await message.answer("👤 Кого добавляем? Выберите должность:",
+                         reply_markup=rk(*grid(employees.POSITIONS, 2), [OTHER_POSITION], [back]))
+
+
+async def _emp_cancel(message: Message, state: FSMContext):
+    if (await state.get_data()).get("emp_origin") == "order":
+        from app.bot.handlers.calc import show_card
+        await show_card(message, state)
+    else:
+        await staff_menu(message, state)
+
+
+@router.message(St.menu, F.text == S_ADD)
+async def staff_add(message: Message, state: FSMContext):
+    await start_add_employee(message, state)
+
+
+@router.message(Emp.position, F.text == OTHER_POSITION)
+async def emp_position_other(message: Message):
+    await message.answer("✍ Напишите должность, например: Сборщик")
+
+
+@router.message(Emp.position, F.text)
+async def emp_position(message: Message, state: FSMContext):
+    if message.text == BACK:
+        await _emp_cancel(message, state)
+        return
+    await state.update_data(emp_position=message.text.strip()[:80])
+    await state.set_state(Emp.name)
+    await message.answer("✅Отлично!\n\n✍ Как зовут сотрудника?", reply_markup=rk([BACK]))
+
+
+@router.message(Emp.name, F.text)
+async def emp_name(message: Message, state: FSMContext):
+    if message.text == BACK:
+        await start_add_employee(message, state, (await state.get_data()).get("emp_origin", "staff"))
+        return
+    name = message.text.strip()[:120]
+    if len(name) < 2:
+        await message.answer("Напишите имя сотрудника 🙂")
+        return
+    await state.update_data(emp_name=name)
+    await state.set_state(Emp.pay_type)
+    await message.answer(f"✅Отлично!\n\n💵 Как вы платите {e(name)}?",
+                         reply_markup=rk([PAY_PCT_BTN], [PAY_FIX_BTN], [BACK]))
+
+
+@router.message(Emp.pay_type, F.text)
+async def emp_pay_type(message: Message, state: FSMContext):
+    if message.text == BACK:
+        await state.set_state(Emp.name)
+        await message.answer("✍ Как зовут сотрудника?", reply_markup=rk([BACK]))
+        return
+    if message.text not in (PAY_PCT_BTN, PAY_FIX_BTN):
+        await message.answer("Выберите способ оплаты кнопкой ниже 👇")
+        return
+    pct = message.text == PAY_PCT_BTN
+    await state.update_data(emp_pay_type=employees.PAY_PERCENT if pct else employees.PAY_FIXED)
+    await state.set_state(Emp.pay_rate)
+    if pct:
+        await message.answer("✅Отлично!\n\n💯 Какой процент от суммы заказа (итого клиенту)?",
+                             reply_markup=rk(["3", "5", "7", "10"], ["15", "20", "25", "30"], [BACK]))
+    else:
+        await message.answer("✅Отлично!\n\n💵 Какую сумму платите за один заказ? Например 300.000",
+                             reply_markup=rk([BACK]))
+
+
+@router.message(Emp.pay_rate, F.text)
+async def emp_pay_rate(message: Message, state: FSMContext):
+    data = await state.get_data()
+    if message.text == BACK:
+        await state.set_state(Emp.pay_type)
+        await message.answer("💵 Как вы платите сотруднику?", reply_markup=rk([PAY_PCT_BTN], [PAY_FIX_BTN], [BACK]))
+        return
+    pct = data["emp_pay_type"] == employees.PAY_PERCENT
+    v = (0 if message.text.strip() == "0" else read_qty(message.text)) if pct else read_money(message.text)
+    if v is None or (pct and v > 100):
+        await message.answer("Напишите процент от 0 до 100, например 10" if pct else "Напишите сумму цифрами, например 300.000")
+        return
+    await state.update_data(emp_pay_rate=str(v))
+    await state.set_state(Emp.access)
+    await message.answer(f"✅Отлично!\n\n🔑 Разрешить {e(data['emp_name'])} составлять сметы в боте?\n\n"
+                         "Если да — получите ссылку для сотрудника. Он будет работать как ваш сотрудник "
+                         "(подписка ему не нужна), а подписка, сотрудники и настройки ему недоступны.",
+                         reply_markup=rk([YES, NO], [BACK]))
+
+
+@router.message(Emp.access, F.text)
+async def emp_access(message: Message, state: FSMContext):
+    data = await state.get_data()
+    if message.text == BACK:
+        await state.set_state(Emp.pay_type)
+        await message.answer("💵 Как вы платите сотруднику?", reply_markup=rk([PAY_PCT_BTN], [PAY_FIX_BTN], [BACK]))
+        return
+    if message.text not in (YES, NO):
+        await message.answer("Ответьте кнопкой «✅ Да» или «❌ Нет» 👇")
+        return
+
+    want_access = message.text == YES
+
+    def work(ctx):
+        emp = employees.create(ctx, name=data["emp_name"], position=data["emp_position"],
+                               pay_type=data["emp_pay_type"], pay_rate=data["emp_pay_rate"])
+        link, note = None, None
+        if want_access:
+            try:
+                link = employees.grant_access(ctx, emp.id)
+            except LimitReached as err:  # сотрудник сохранён, но без доступа к боту
+                note = err.message
+        return emp.id, employees.pay_text(emp), link, note
+    res = await call(message, work)
+    if not res:
+        return
+    emp_id, pay, link, note = res
+    text = f"✅ Сотрудник добавлен: {e(data['emp_name'])} — {e(data['emp_position'])} · {pay}"
     if link:
-        await message.answer(f"🔗 Приглашение: {ROLE_TITLES[role].lower()}\n\n{link}\n\n"
-                             "Перешлите эту ссылку сотруднику. Она одноразовая и действует 3 дня.",
-                             disable_web_page_preview=True)
+        text += (f"\n\n🔗 Отправьте эту ссылку сотруднику:\n{link}\n\n"
+                 "Ссылка одноразовая и действует 3 дня.")
+    if note:
+        text += f"\n\n⚠️ Доступ к сметам не выдан: {e(note)}"
+    if data.get("emp_origin") == "order":
+        from app.bot.handlers.calc import assign_worker
+        await message.answer(text, disable_web_page_preview=True)
+        await assign_worker(message, state, emp_id)
+    else:
+        await staff_menu(message, state, text)
 
 
-@router.message(St.menu, F.text == REVOKE)
-async def staff_revoke(message: Message, state: FSMContext):
-    members = await call(message, lambda ctx: [(m.id, f"{m.user.full_name or m.user.telegram_id} — "
-                                                      f"{ROLE_TITLES[m.role]}"[:60])
-                                               for m in staff.members(ctx) if m.role != Role.owner])
-    if members:
+@router.message(St.menu, F.text == S_ACCESS)
+async def staff_access(message: Message, state: FSMContext):
+    rows = await call(message, lambda ctx: [(x.id, f"{x.name} — {x.position}"[:60])
+                                            for x in employees.list_active(ctx) if not x.user_id])
+    if rows:
         await state.set_state(St.remove)
-        await state.update_data(member_map={t: mid for mid, t in members})
-        await message.answer("🚫 У кого отозвать доступ?", reply_markup=rk(*[[t] for _, t in members], [BACK]))
+        await state.update_data(member_map={t: mid for mid, t in rows}, staff_action="access")
+        await message.answer("🔑 Кому дать доступ к составлению смет?", reply_markup=rk(*[[t] for _, t in rows], [BACK]))
+
+
+@router.message(St.menu, F.text == S_FIRE)
+async def staff_fire(message: Message, state: FSMContext):
+    rows = await call(message, lambda ctx: [(x.id, f"{x.name} — {x.position}"[:60]) for x in employees.list_active(ctx)])
+    if rows:
+        await state.set_state(St.remove)
+        await state.update_data(member_map={t: mid for mid, t in rows}, staff_action="fire")
+        await message.answer("🚫 Кого уволить?", reply_markup=rk(*[[t] for _, t in rows], [BACK]))
 
 
 @router.message(St.remove, F.text)
-async def staff_remove_pick(message: Message, state: FSMContext):
-    mid = (await state.get_data()).get("member_map", {}).get(message.text)
-    if not mid:
+async def staff_pick(message: Message, state: FSMContext):
+    data = await state.get_data()
+    eid = data.get("member_map", {}).get(message.text)
+    if not eid:
         await staff_menu(message, state)
         return
-    await state.update_data(member_id=mid, member_name=message.text)
+    if data.get("staff_action") == "access":
+        link = await call(message, lambda ctx: employees.grant_access(ctx, eid))
+        if link:
+            await staff_menu(message, state, f"🔗 Ссылка для {e(message.text)}:\n{link}\n\n"
+                                             "Отправьте её сотруднику. Ссылка одноразовая и действует 3 дня.")
+        return
+    await state.update_data(member_id=eid)
     await state.set_state(St.confirm)
-    await message.answer(f"Отозвать доступ: {e(message.text)}?", reply_markup=rk([YES, NO]))
+    await message.answer(f"Уволить {e(message.text)}? Доступ к боту будет закрыт, история заказов сохранится.",
+                         reply_markup=rk([YES, NO]))
 
 
 @router.message(St.confirm, F.text)
-async def staff_remove_confirm(message: Message, state: FSMContext):
+async def staff_fire_confirm(message: Message, state: FSMContext):
     data = await state.get_data()
-    if message.text == YES and await call(message, lambda ctx: (staff.remove(ctx, data["member_id"]), True)[1]):
-        await staff_menu(message, state, "✅ Доступ отозван.")
+    if message.text == YES and await call(message, lambda ctx: employees.fire(ctx, data["member_id"]).id):
+        await staff_menu(message, state, "✅ Сотрудник уволен.")
     else:
         await staff_menu(message, state)
+
+
+@router.message(F.text == BTN_LEAVE)
+async def leave_start(message: Message, state: FSMContext):
+    await state.clear()
+    await state.set_state(St.leave)
+    await message.answer("🚪 Уйти из цеха? Доступ к расчётам этого предприятия будет закрыт.",
+                         reply_markup=rk([YES, NO]))
+
+
+@router.message(St.leave, F.text)
+async def leave_confirm(message: Message, state: FSMContext):
+    if message.text != YES:
+        from app.bot.handlers.start import show_home
+        await show_home(message, state)
+        return
+    name = await call(message, employees.leave)
+    if name:
+        await state.clear()
+        await message.answer(f"Вы вышли из «{e(name)}».\n\nЧтобы зарегистрировать своё предприятие, отправьте /start.",
+                             reply_markup=ReplyKeyboardRemove())
 
 
 # ================================================================ подписка и оплата
@@ -365,7 +460,7 @@ async def referral_menu(message: Message, state: FSMContext):
 
 FIELDS = {"✏️ Название": ("name", "Название предприятия"), "✏️ Телефон": ("phone", "Телефон"),
           "✏️ Адрес": ("address", "Адрес"), "✏️ E-mail": ("email", "E-mail"), "✏️ ИНН": ("tax_id", "ИНН")}
-S_MARKUP = "💵 Наценки"
+S_MARKUP = "💵 Наценка"
 S_LOGO = "🖼 Логотип"
 
 
@@ -381,8 +476,7 @@ async def settings_menu(message: Message, state: FSMContext, prefix: str = ""):
         ent = ctx.enterprise
         return (f"⚙️ <b>Настройки</b>\n\n<b>{e(ent.name)}</b>\nТелефон: {e(ent.phone) or '—'}\n"
                 f"Адрес: {e(ent.address) or '—'}\nE-mail: {e(ent.email) or '—'}\nИНН: {e(ent.tax_id) or '—'}\n\n"
-                f"<b>Наценки</b> для новых заказов:\nматериалы {qty(ent.markup_materials)}% · "
-                f"фурнитура {qty(ent.markup_hardware)}% · работа цеха {qty(ent.markup_works)}%\n"
+                f"<b>Стоимость работы цеха</b> (наценка на общую сумму): {qty(ent.markup_works)}%\n"
                 f"Фиксированная доплата: {money(ent.fixed_addition)}\n"
                 f"Логотип в PDF: {'загружен ✅' if ent.logo_path else 'нет'}"), ctx.can("settings.edit"), (
             ent.markup_materials, ent.markup_hardware, ent.markup_works, ent.fixed_addition)
@@ -416,25 +510,10 @@ async def _read_pct(message: Message, state: FSMContext):
 @router.message(Set.menu, F.text == S_MARKUP)
 async def set_mk(message: Message, state: FSMContext):
     cur = (await state.get_data())["mk_cur"]
-    await _pct(message, state, Set.mk_mat, "Наценка на материалы", cur[0])
-
-
-@router.message(Set.mk_mat, F.text)
-async def set_mk_mat(message: Message, state: FSMContext):
-    v = await _read_pct(message, state)
-    if v is not None:
-        await state.update_data(mk_mat=str(v))
-        await _pct(message, state, Set.mk_hw, "Наценка на фурнитуру", (await state.get_data())["mk_cur"][1],
-                   "✅Отлично!\n\n")
-
-
-@router.message(Set.mk_hw, F.text)
-async def set_mk_hw(message: Message, state: FSMContext):
-    v = await _read_pct(message, state)
-    if v is not None:
-        await state.update_data(mk_hw=str(v))
-        await _pct(message, state, Set.mk_work, "Наценка на работу цеха (сборка, монтаж и т.п.)",
-                   (await state.get_data())["mk_cur"][2], "✅Отлично!\n\n")
+    await state.set_state(Set.mk_work)
+    await message.answer("💵 Стоимость работы цеха — наценка на общую сумму материалов, фурнитуры и технических "
+                         f"работ. Применяется к новым заказам.\n\nСейчас: {qty(cur[2])}%. Выберите или напишите:",
+                         reply_markup=rk(*PCT, [BACK]))
 
 
 @router.message(Set.mk_work, F.text)
@@ -444,8 +523,9 @@ async def set_mk_work(message: Message, state: FSMContext):
         await state.update_data(mk_work=str(v))
         await state.set_state(Set.mk_fixed)
         cur = (await state.get_data())["mk_cur"]
-        await message.answer(f"✅Отлично!\n\n💵 Фиксированная доплата к каждому заказу, сум. Сейчас: {money(cur[3])}.\n"
-                             "Напишите сумму или пропустите:", reply_markup=rk([SKIP, "0"], [BACK]))
+        await message.answer(f"✅Отлично!\n\n💵 Фиксированная доплата к каждому заказу, сум (например замер). "
+                             f"Сейчас: {money(cur[3])}.\nНапишите сумму или пропустите:",
+                             reply_markup=rk([SKIP, "0"], [BACK]))
 
 
 @router.message(Set.mk_fixed, F.text)
@@ -458,9 +538,9 @@ async def set_mk_fixed(message: Message, state: FSMContext):
         await message.answer("Напишите сумму цифрами, например 50.000")
         return
     data = await state.get_data()
-    if await call(message, lambda ctx: accounts.set_markups(ctx, materials=data["mk_mat"], hardware=data["mk_hw"],
-                                                            works=data["mk_work"], fixed=fixed).id):
-        await settings_menu(message, state, "✅ Наценки сохранены! Они применяются к новым заказам.")
+    if await call(message, lambda ctx: accounts.set_markups(ctx, materials=0, hardware=0, works=data["mk_work"],
+                                                            fixed=fixed).id):
+        await settings_menu(message, state, "✅ Сохранено! Применяется к новым заказам.")
 
 
 @router.message(Set.menu, F.text.in_(set(FIELDS)))

@@ -12,14 +12,18 @@
       <dt>Адрес</dt><dd>{{ order.client_address or '—' }}</dd><dt>Изделие</dt><dd>{{ order.title or '—' }}</dd><dt>Создан</dt><dd>{{ order.created_at|dt }}</dd></dl>
   </div>
   <div class="card">
-    <div class="card-h"><h3>Наценки заказа</h3></div>
-    <dl class="dl"><dt>Материалы</dt><dd>{{ order.markup_materials|qty }}%</dd><dt>Фурнитура</dt><dd>{{ order.markup_hardware|qty }}%</dd>
-      <dt>Работы цеха</dt><dd>{{ order.markup_works|qty }}%</dd><dt>Фикс. сумма</dt><dd>{{ order.fixed_addition|money }}</dd></dl>
+    <div class="card-h"><h3>Рабочие</h3></div>
+    {% if order.workers %}<dl class="dl">{% for w in order.workers %}<dt>{{ w.name }} · {{ w.position }}</dt><dd>{{ w.amount|money }}</dd>{% endfor %}
+      <dt><b>Оплата рабочим</b></dt><dd><b>{{ order.workers_cost|money }}</b></dd></dl>
+    {% else %}<p class="muted">Рабочие не назначены.</p>{% endif %}
   </div>
   <div class="card">
     <div class="card-h"><h3>Итоги</h3></div>
-    <dl class="dl"><dt>Себестоимость</dt><dd>{{ order.cost_total|money }}</dd><dt>Доход от наценок</dt><dd>{{ order.markup_income|money }}</dd>
-      <dt>Цена клиенту</dt><dd><b>{{ order.price_total|money }}</b></dd></dl>
+    <dl class="dl"><dt>Себестоимость</dt><dd>{{ order.cost_total|money }}</dd>
+      <dt>Работа цеха ({{ order.markup_works|qty }}%)</dt><dd>{{ order.workshop_fee|money }}</dd>
+      {% if order.fixed_addition %}<dt>Доплата</dt><dd>{{ order.fixed_addition|money }}</dd>{% endif %}
+      <dt>Цена клиенту</dt><dd><b>{{ order.price_total|money }}</b></dd>
+      <dt>Прибыль цеха</dt><dd>{{ order.profit|money }}</dd></dl>
   </div>
 </div>
 <div class="card" style="margin-top:16px">

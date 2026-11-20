@@ -71,6 +71,8 @@ class PdfData:
     extra_amount: Decimal
     total: Decimal
     comment: str | None = None
+    fee_label: str = "Стоимость работы цеха"
+    fee_amount: Decimal = Decimal(0)
 
 
 def _styles():
@@ -199,12 +201,14 @@ def render(data: PdfData) -> bytes:
 
     # ---- итоги
     tot_rows = []
+    if data.fee_amount and data.fee_amount > 0:
+        tot_rows.append([Paragraph(_esc(data.fee_label), st["body"]), Paragraph(money(data.fee_amount), st["right"])])
     if data.extra_amount and data.extra_amount > 0:
         tot_rows.append([Paragraph(_esc(data.extra_label), st["body"]), Paragraph(money(data.extra_amount), st["right"])])
     tot_rows.append([Paragraph("<b>ИТОГО К ОПЛАТЕ</b>", ParagraphStyle("tt", parent=st["body"], textColor=colors.white)),
                      Paragraph(f"<b>{money(data.total)}</b>",
                                ParagraphStyle("tv", parent=st["right"], textColor=colors.white, fontSize=11))])
-    tt = Table(tot_rows, colWidths=[W * 0.25, W * 0.25], hAlign="RIGHT")
+    tt = Table(tot_rows, colWidths=[W * 0.32, W * 0.22], hAlign="RIGHT")
     tt.setStyle(TableStyle([
         ("BACKGROUND", (0, -1), (-1, -1), ACCENT),
         ("LINEBELOW", (0, 0), (-1, -2), 0.4, LINE),

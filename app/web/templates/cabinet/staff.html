@@ -11,9 +11,22 @@
   <p class="hint">Отправьте ссылку сотруднику — он откроет её в Telegram и получит доступ.</p>
 </div>
 {% endif %}
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h"><h3>Сотрудники цеха</h3><span class="more">добавляются в боте: «👥 Сотрудники»</span></div>
+  {% if employees %}
+  <div class="table-wrap"><table class="t">
+    <thead><tr><th>Имя</th><th>Должность</th><th>Оплата</th><th>Доступ к сметам</th>{% if ctx.can('staff.manage') %}<th></th>{% endif %}</tr></thead>
+    <tbody>{% for x in employees %}
+      <tr><td>{{ x.name }}</td><td>{{ x.position }}</td><td>{{ pay_text(x) }}</td>
+        <td>{% if x.user_id %}<span class="badge good">Есть</span>{% else %}<span class="badge">Нет</span>{% endif %}</td>
+        {% if ctx.can('staff.manage') %}<td class="num"><form method="post" action="/cabinet/employees/{{ x.id }}/fire" class="inline" onsubmit="return confirm('Уволить {{ x.name }}?')"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn danger sm">Уволить</button></form></td>{% endif %}</tr>
+    {% endfor %}</tbody>
+  </table></div>
+  {% else %}<p class="muted">Сотрудников пока нет. Добавьте их в боте: «👥 Сотрудники» → «➕ Добавить сотрудника».</p>{% endif %}
+</div>
 <div class="grid g3">
   <div class="card span2">
-    <div class="card-h"><h3>Команда</h3></div>
+    <div class="card-h"><h3>Доступ к кабинету и боту</h3></div>
     <div class="table-wrap"><table class="t">
       <thead><tr><th>Сотрудник</th><th>Роль</th><th>С нами с</th>{% if ctx.can('staff.manage') %}<th></th>{% endif %}</tr></thead>
       <tbody>{% for m in members %}

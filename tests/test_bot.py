@@ -132,7 +132,8 @@ def test_new_calc_step_by_step(db, owner):
     assert {"📝Добавить ещё", TO_ORDER_LONG} <= set(c.buttons())
     card = c.press(TO_ORDER_LONG)
     assert "📦 Материалы: Акрил Темный асфальт (3 листа)." in card
-    assert "Себестоимость: 1.980.000 сум" in card and "Итого клиенту: 2.574.000 сум" in card  # наценка 30%
+    assert "Себестоимость: 1.980.000 сум" in card and "Стоимость работы цеха (0%): 0 сум" in card
+    assert "Итого клиенту: 1.980.000 сум" in card
 
     # второй материал: цена подсказывается кнопкой, размер листа — тоже
     c.press("📦Материалы")
@@ -141,7 +142,9 @@ def test_new_calc_step_by_step(db, owner):
     c.send("Акрил Белый глянец")
     c.press("📦Корпусное покрытие")
     assert "1220 × 2440" in c.buttons()
-    c.press("1220 × 2440")
+    assert "ширину одного листа" in c.press("✍Свой размер")    # свой размер — по шагам
+    assert "высоту листа" in c.send("1220")
+    c.send("2440")
     assert "660.000" in c.buttons()                      # прошлая цена — одной кнопкой
     c.press("660.000")
     assert "1,5 листа" in c.send("1,5")
@@ -156,23 +159,32 @@ def test_new_calc_step_by_step(db, owner):
     assert "🔩ФУРНИТУРА №1" in c.press("10")
     c.press(TO_ORDER_LONG)
 
-    # работа цеха и рабочие
+    # технические работы — без собственной наценки
     c.press("🛠Работа цеха")
-    c.press("Сборка и монтаж")
-    assert "Работа «Сборка и монтаж» добавлена — 900.000 сум" in c.send("900.000")
-    c.press("👥Добавить рабочих")
-    c.press("2")
-    assert "2 чел. × 300.000 сум = 600.000 сум" in c.send("300.000")
+    assert {"Распил", "Кромка", "Доставка", "Транспортировка"} <= set(c.buttons())
+    c.press("Распил")
+    assert "Работа «Распил» добавлена — 150.000 сум" in c.send("150.000")
 
-    # наценки заказа — по шагам
+    # стоимость работы цеха — одна наценка на общую сумму
     c.press("💵Настроить наценку")
-    c.press("0")
-    c.press("0")
-    c.press("10")
-    card = c.press(SKIP)
-    assert "Наценки: материалы 0% · фурнитура 0% · работа цеха 10%" in card
-    # 1.980.000 + 990.000 + 250.000 + (900.000 + 600.000) × 1,1
-    assert "Итого клиенту: 4.870.000 сум" in card
+    card = c.press("10")
+    # 1.980.000 + 990.000 + 250.000 + 150.000 = 3.370.000; +10 % = 337.000
+    assert "Себестоимость: 3.370.000 сум" in card and "Стоимость работы цеха (10%): 337.000 сум" in card
+    assert "Итого клиенту: 3.707.000 сум" in card
+
+    # рабочие — из сотрудников; нового можно добавить прямо из заказа
+    assert "пока нет сотрудников" in c.press("👥Добавить рабочих")
+    assert "Выберите должность" in c.press("➕ Новый сотрудник")
+    assert {"Дизайнер", "Конструктор", "Менеджер", "Мастер", "Помощник мастера", "Бухгалтер",
+            "Другая должность📝"} <= set(c.buttons())
+    assert "Как зовут" in c.press("Мастер")
+    assert "Как вы платите" in c.send("Бахтиёр")
+    assert "Какой процент" in c.press("💯 Процент от заказа")
+    assert "составлять сметы" in c.press("5")
+    card = c.press("❌ Нет")
+    assert "👥 Рабочие: Бахтиёр (Мастер) — 185.350 сум." in card     # 5 % от 3.707.000
+    assert "Итого клиенту: 3.707.000 сум" in card                   # клиенту не добавляется
+    assert "Оплата рабочим: 185.350 сум" in card and "Прибыль цеха: 151.650 сум" in card
 
     # изделие №2
     assert "№2" in c.press("🛋Изделие №2")
@@ -183,12 +195,12 @@ def test_new_calc_step_by_step(db, owner):
     # PDF, статус, удаление, расход
     c.press("📄PDF-смета")
     docs = [m for m in c.session.calls if type(m).__name__ == "SendDocument"]
-    assert docs and "Смета EST-" in docs[-1].caption and "4.870.000" in docs[-1].caption.replace("\xa0", " ")
+    assert docs and "Смета EST-" in docs[-1].caption and "3.707.000" in docs[-1].caption.replace("\xa0", " ")
     c.press("🔄Статус")
     assert "Статус: В работе" in c.press("В работе")
     c.press("🗑Удалить позицию")
     remove_btn = next(b for b in c.buttons() if b.startswith("❌ 1."))
-    assert "Позиция удалена" in c.press(remove_btn)
+    assert "Удалено из заказа" in c.press(remove_btn)
     c.press("♻️Расход и отходы")
     row = next(b for b in c.buttons() if b.startswith("✏️"))
     c.press(row)
@@ -292,13 +304,16 @@ def test_settings_markups_step_by_step(db, owner):
     c = owner
     _activate(db)
     c.send("⚙️ Настройки")
-    c.press("💵 Наценки")
-    c.press("40")
+    assert "Стоимость работы цеха — наценка на общую сумму" in c.press("💵 Наценка")
     c.press("20")
-    c.send("15")
-    assert "Наценки сохранены" in c.send("50.000")
-    assert "материалы 40% · фурнитура 20% · работа цеха 15%" in c.last()
+    assert "Сохранено" in c.send("50.000")
+    assert "Стоимость работы цеха</b> (наценка на общую сумму): 20%" in c.last()
     assert "Фиксированная доплата: 50.000 сум" in c.last()
+
+
+def test_analytics_is_a_link(db, owner):
+    c = owner
+    assert "/cabinet/analytics" in c.send("📊 Аналитика") and "Выручка" not in c.last()
 
 
 def test_duplicate_update_ignored(db, owner):
@@ -312,15 +327,27 @@ def test_duplicate_update_ignored(db, owner):
     assert mid > before and len(c.session.calls) == mid
 
 
-def test_invite_and_login_deeplinks(db, owner):
+def test_employee_access_and_leave(db, owner):
+    """Сотрудник с доступом к сметам: ссылка → работает как сотрудник владельца → может уйти; владелец увольняет."""
     from app.services import auth_web
-    _activate(db, "BUSINESS")
+    _activate(db, "PRO")
     owner.send("👥 Сотрудники")
-    link = owner.press("➕ Менеджер")
-    code = link.split("start=inv_")[1].split()[0]
-    worker = TgClient(4242, "Менеджер")
+    owner.press("➕ Добавить сотрудника")
+    owner.press("Другая должность📝")
+    owner.send("Сборщик")
+    owner.send("Анвар")
+    owner.press("💵 Фиксированная сумма")
+    owner.send("200.000")
+    text = owner.press("✅ Да")
+    assert "Сотрудник добавлен: Анвар — Сборщик · 200.000 сум за заказ" in text and "start=inv_" in text
+    code = text.split("start=inv_")[1].split()[0]
+
+    worker = TgClient(4242, "Анвар")
     worker.send(f"/start inv_{code}")
     assert any("присоединились" in t for t in worker.session.texts())
+    assert set(worker.buttons()) == {"🧮 Новый расчёт", "📋 Заказы", "📦 Материалы", "🌐 Веб-кабинет",
+                                     "🚪 Уйти из цеха"}           # без подписки и сотрудников
+    assert "Новый расчет открыт" in worker.press("🧮 Новый расчёт")
     worker.send(BTN_SUB)
     assert "владелец" in worker.last()
 
@@ -328,9 +355,30 @@ def test_invite_and_login_deeplinks(db, owner):
     db.commit()
     worker.send(f"/start login_{token}")
     assert "Вход подтверждён" in worker.press("✅ Подтвердить вход")
-    db.expire_all()
-    assert auth_web.poll_login(db, token, poll).telegram_id == 4242
+
+    worker.send("🚪 Уйти из цеха")
+    assert "Вы вышли из" in worker.press("✅ Да")
+    owner.send("👥 Сотрудники")
+    assert "Сотрудников пока нет" in owner.last()
     worker.no_inline()
+    owner.no_inline()
+
+
+def test_owner_fires_employee(db, owner):
+    _activate(db, "START")
+    owner.send("👥 Сотрудники")
+    owner.press("➕ Добавить сотрудника")
+    owner.press("Бухгалтер")
+    owner.send("Нигора")
+    owner.press("💯 Процент от заказа")
+    owner.press("3")
+    text = owner.press("✅ Да")                                      # START — только владелец
+    assert "Сотрудник добавлен" in text and "Доступ к сметам не выдан: Достигнут лимит пользователей" in text
+    owner.send("👥 Сотрудники")
+    assert "Нигора — Бухгалтер · 3% от заказа" in owner.last()
+    owner.press("🚫 Уволить сотрудника")
+    owner.press("Нигора — Бухгалтер")
+    assert "Сотрудник уволен" in owner.press("✅ Да")
 
 
 def test_background_is_event_driven(db, monkeypatch):

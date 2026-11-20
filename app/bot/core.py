@@ -31,10 +31,11 @@ BTN_REF = "🎁 Пригласить друга"
 BTN_SETTINGS = "⚙️ Настройки"
 BTN_WEB = "🌐 Веб-кабинет"
 HOME = "🏛️Главная"
+BTN_LEAVE = "🚪 Уйти из цеха"
 
 # Кнопки, которые прерывают любой незавершённый диалог
 MENU_BUTTONS = {BTN_NEW, BTN_ORDERS, BTN_MATERIALS, BTN_EXPENSES, BTN_ANALYTICS, BTN_STAFF, BTN_SUB, BTN_REF,
-                BTN_SETTINGS, BTN_WEB, HOME}
+                BTN_SETTINGS, BTN_WEB, HOME, BTN_LEAVE}
 
 # ---------------------------------------------------------------- общие кнопки шагов
 SKIP = "⏩Пропустить"
@@ -53,7 +54,10 @@ def rk(*rows: list[str], placeholder: str | None = None) -> ReplyKeyboardMarkup:
                                resize_keyboard=True, is_persistent=True, input_field_placeholder=placeholder)
 
 
-def main_menu() -> ReplyKeyboardMarkup:
+def main_menu(role: str | None = None) -> ReplyKeyboardMarkup:
+    """Главное меню. Сотруднику (role="employee") — только расчёты, без подписки и управления."""
+    if role == "employee":
+        return rk([BTN_NEW, BTN_ORDERS], [BTN_MATERIALS, BTN_WEB], [BTN_LEAVE], placeholder="Выберите раздел")
     return rk([BTN_NEW, BTN_ORDERS], [BTN_MATERIALS, BTN_EXPENSES], [BTN_ANALYTICS, BTN_STAFF],
               [BTN_SUB, BTN_REF], [BTN_SETTINGS, BTN_WEB], placeholder="Выберите раздел")
 

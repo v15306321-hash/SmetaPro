@@ -38,16 +38,23 @@ def status_text(ctx) -> str:
         return (f"🏭 <b>{e(ctx.enterprise.name)}</b> · {role}\n"
                 f"Тариф <b>{us['plan'].title}</b> до {sub.ends_at:%d.%m.%Y} · "
                 f"сметы {us['estimates_used']} из {us['estimates_limit']}")
+    if not ctx.is_owner:
+        return f"🏭 <b>{e(ctx.enterprise.name)}</b> · {role}\n🔒 Подписка предприятия не активна — сообщите владельцу."
     return (f"🏭 <b>{e(ctx.enterprise.name)}</b> · {role}\n"
             f"🔒 Подписка не активна — откройте «{BTN_SUB}».")
 
 
+def _role(ctx) -> str | None:
+    return ctx.role.value if ctx.role else None
+
+
 async def show_home(message: Message, state: FSMContext, greeting: str | None = None):
     await state.clear()
-    status = await call(message, status_text)
-    if status is not None:
+    res = await call(message, lambda ctx: (status_text(ctx), _role(ctx)))
+    if res is not None:
+        status, role = res
         await message.answer((greeting + "\n\n" if greeting else "🏛️ Главное меню\n\n") + status,
-                             reply_markup=main_menu())
+                             reply_markup=main_menu(role))
 
 
 @router.message(CommandStart())
@@ -72,16 +79,17 @@ async def start(message: Message, command: CommandObject, state: FSMContext):
             m = staff.accept(ctx.db, ctx.user, arg[4:])
             joined = (m.enterprise.name, ROLE_TITLES[m.role])
             ctx = accounts.load_ctx(ctx.db, ctx.user)
-        return bool(ctx.enterprise), status_text(ctx), joined
+        return bool(ctx.enterprise), status_text(ctx), joined, _role(ctx)
 
     res = await call(message, work, need_enterprise=False)
     if res is None:
         return
-    has_ent, status, joined = res
+    has_ent, status, joined, role = res
     if joined:
         await message.answer(f"👥 Вы присоединились к «{e(joined[0])}» как {joined[1].lower()}.")
     if has_ent:
-        await message.answer(f"Здравствуйте, {e(message.from_user.first_name)}!\n\n{status}", reply_markup=main_menu())
+        await message.answer(f"Здравствуйте, {e(message.from_user.first_name)}!\n\n{status}",
+                             reply_markup=main_menu(role))
         return
     await message.answer(
         "👋 Добро пожаловать в <b>SmetaPro</b>!\n\n"

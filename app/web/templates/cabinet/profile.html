@@ -23,18 +23,16 @@
     </form>
   </div>
   <div class="card">
-    <div class="card-h"><h3>Индивидуальные наценки</h3><span class="more">доступны на всех тарифах</span></div>
+    <div class="card-h"><h3>Стоимость работы цеха</h3><span class="more">наценка на всех тарифах</span></div>
     <form method="post" action="/cabinet/profile/markups">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <fieldset style="border:0;padding:0;margin:0" {{ 'disabled' if not editable or not usage.subscription }}>
       <div class="form-grid">
-        <div class="field"><label for="m1">Материалы, %</label><input class="input" id="m1" name="materials" inputmode="decimal" value="{{ e.markup_materials|qty }}"></div>
-        <div class="field"><label for="m2">Фурнитура, %</label><input class="input" id="m2" name="hardware" inputmode="decimal" value="{{ e.markup_hardware|qty }}"></div>
-        <div class="field"><label for="m3">Работы цеха (в т.ч. сборка и монтаж), %</label><input class="input" id="m3" name="works" inputmode="decimal" value="{{ e.markup_works|qty }}"></div>
-        <div class="field"><label for="m4">Фиксированная сумма, сум</label><input class="input" id="m4" name="fixed" inputmode="decimal" value="{{ e.fixed_addition|qty }}"></div>
+        <div class="field"><label for="m3">Наценка на общую сумму, %</label><input class="input" id="m3" name="works" inputmode="decimal" value="{{ e.markup_works|qty }}"></div>
+        <div class="field"><label for="m4">Фиксированная доплата, сум</label><input class="input" id="m4" name="fixed" inputmode="decimal" value="{{ e.fixed_addition|qty }}"></div>
       </div>
-      <p class="hint">Новые значения применяются к новым заказам. В существующем заказе наценки можно изменить в боте до формирования сметы.</p>
-      {% if editable and usage.subscription %}<button class="btn">Сохранить наценки</button>{% elif not usage.subscription %}<p class="hint">Изменение наценок доступно при активной подписке.</p>{% endif %}
+      <p class="hint">Стоимость работы цеха = (материалы + фурнитура + технические работы) × наценка. Применяется к новым заказам; в заказе её можно изменить в боте.</p>
+      {% if editable and usage.subscription %}<button class="btn">Сохранить</button>{% elif not usage.subscription %}<p class="hint">Изменение наценок доступно при активной подписке.</p>{% endif %}
       </fieldset>
     </form>
   </div>

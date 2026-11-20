@@ -1,5 +1,15 @@
 """Заказы и калькулятор стоимости (ТЗ, раздел 6).
 
+Формула (согласована с заказчиком 21.11.2026):
+  себестоимость           = Σ (количество × цена) материалов, фурнитуры и технических работ — без наценок
+  стоимость работы цеха   = себестоимость × наценка % (это и есть наценка — услуга цеха)
+  итого клиенту           = себестоимость + стоимость работы цеха + фиксированная доплата
+  оплата рабочим          = % от «итого клиенту» или фиксированная сумма за заказ — расход цеха,
+                            клиенту не добавляется
+  прибыль цеха            = стоимость работы цеха + доплата − оплата рабочим
+
+Ниже — описание предыдущей версии формулы (историческое):
+
 Формула (предложенная, п. 26 ТЗ — подлежит согласованию; описана в docs/CALCULATION.md):
 
   количество позиции:
@@ -61,17 +71,25 @@ def markup_for(order: Order, kind: ItemKind) -> Decimal:
 
 def recalc(order: Order) -> Order:
     totals = {ItemKind.material: Decimal(0), ItemKind.hardware: Decimal(0), ItemKind.work: Decimal(0)}
-    price_sum = Decimal(0)
     for it in order.items:
         it.cost = money_round(D(it.quantity) * D(it.unit_cost))
-        it.price = money_round(it.cost * (1 + D(markup_for(order, it.kind)) / 100))
+        it.price = it.cost  # позиции без наценки; наценка — отдельная строка «стоимость работы цеха»
         totals[it.kind] += it.cost
-        price_sum += it.price
     order.cost_materials = totals[ItemKind.material]
     order.cost_hardware = totals[ItemKind.hardware]
     order.cost_works = totals[ItemKind.work]
     order.cost_total = sum(totals.values())
-    order.price_total = money_round(price_sum + D(order.fixed_addition)) if order.items else Decimal(0)
+    if order.items:
+        fee = money_round(order.cost_total * D(order.markup_works) / 100)
+        order.price_total = money_round(order.cost_total + fee + D(order.fixed_addition))
+    else:
+        order.price_total = Decimal(0)
+    workers = Decimal(0)
+    for w in order.workers:
+        w.amount = money_round(order.price_total * D(w.pay_rate) / 100) if w.pay_type == "percent" \
+            else money_round(D(w.pay_rate))
+        workers += w.amount
+    order.workers_cost = workers
     return order
 
 
@@ -91,7 +109,7 @@ def create(ctx: Ctx, *, title: str = "", client_name: str = "", client_phone: st
     o = Order(enterprise_id=ctx.eid, number=_next_number(ctx.db, ctx.eid), title=(title or "").strip()[:200],
               client_name=(client_name or "").strip()[:200], client_phone=(client_phone or "").strip()[:32] or None,
               client_address=(client_address or "").strip()[:300] or None, comment=comment,
-              markup_materials=ent.markup_materials, markup_hardware=ent.markup_hardware,
+              markup_materials=0, markup_hardware=0,
               markup_works=ent.markup_works, fixed_addition=ent.fixed_addition, created_by_id=ctx.user.id,
               products=[title.strip()[:120]] if (title or "").strip() else [],
               products_planned=max(1, min(int(products_planned or 1), 100)))
@@ -284,6 +302,36 @@ def status_history(ctx: Ctx, order_id: int) -> list[OrderStatusHistory]:
     o = get(ctx, order_id)
     return list(ctx.db.scalars(select(OrderStatusHistory).where(OrderStatusHistory.order_id == o.id)
                                .order_by(OrderStatusHistory.created_at)))
+
+
+def add_worker(ctx: Ctx, order_id: int, employee_id: int):
+    """Назначить сотрудника на заказ; оплата считается по его ставке."""
+    from app.models import Employee, OrderWorker
+    ctx.require("orders.edit")
+    tariffs.require_active(ctx.db, ctx.eid)
+    o = get(ctx, order_id)
+    emp = ctx.db.get(Employee, employee_id)
+    if not emp or emp.enterprise_id != ctx.eid or not emp.is_active:
+        raise NotFound("Сотрудник не найден.")
+    if any(w.employee_id == emp.id for w in o.workers):
+        raise ValidationError(f"{emp.name} уже работает над этим заказом.")
+    w = OrderWorker(employee_id=emp.id, name=emp.name, position=emp.position, pay_type=emp.pay_type,
+                    pay_rate=emp.pay_rate)
+    o.workers.append(w)
+    recalc(o)
+    ctx.db.flush()
+    return w
+
+
+def remove_worker(ctx: Ctx, order_id: int, worker_id: int) -> Order:
+    ctx.require("orders.edit")
+    o = get(ctx, order_id)
+    w = next((x for x in o.workers if x.id == worker_id), None)
+    if not w:
+        raise NotFound("Рабочий не найден.")
+    o.workers.remove(w)
+    recalc(o)
+    return o
 
 
 def grouped_items(order: Order) -> list[tuple[str, list[OrderItem]]]:

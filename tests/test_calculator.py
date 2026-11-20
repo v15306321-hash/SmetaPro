@@ -18,43 +18,48 @@ def test_quantity_rules():
         orders.compute_quantity("шт", 0, None, None)
 
 
-def test_order_totals_with_markups(db):
+def test_order_totals_workshop_fee(db):
+    """Себестоимость без наценок; наценка — «стоимость работы цеха» на общую сумму; рабочие — расход цеха."""
+    from app.services import employees
     ctx = make_enterprise(db, "START")
-    accounts.set_markups(ctx, materials=30, hardware=20, works=10, fixed=50000)
-    ldsp = materials.create(ctx, kind=ItemKind.material, name="ЛДСП Egger 16 мм", unit="м²", price=100000,
-                            category="ЛДСП")
+    accounts.set_markups(ctx, works=10, fixed=50000)
+    acryl = materials.create(ctx, kind=ItemKind.material, name="Акрил Темный асфальт", unit="лист", price=660000,
+                             category="Корпусное покрытие", attrs={"sheet_w": 1220, "sheet_h": 2440})
     hinge = materials.create(ctx, kind=ItemKind.hardware, name="Петля Blum", unit="шт", price=25000)
     o = orders.create(ctx, title="Кухня", client_name="Иван")
-    assert o.markup_materials == Decimal("30")
-    orders.add_item(ctx, o.id, kind=ItemKind.material, material_id=ldsp.id, height_mm=2000, width_mm=1000,
-                    pieces=2, section="Кухня")                                   # 4 м² × 100 000 = 400 000
-    orders.add_item(ctx, o.id, kind=ItemKind.hardware, material_id=hinge.id, pieces=10, section="Кухня")  # 250 000
-    orders.add_item(ctx, o.id, kind=ItemKind.work, name="Сборка и монтаж", unit="услуга", unit_cost=300000)
+    assert o.markup_materials == 0 and o.markup_works == Decimal("10")
+    orders.add_item(ctx, o.id, kind=ItemKind.material, material_id=acryl.id, quantity=3, section="Кухня")
+    orders.add_item(ctx, o.id, kind=ItemKind.hardware, material_id=hinge.id, quantity=10, section="Кухня")
+    orders.add_item(ctx, o.id, kind=ItemKind.work, name="Распил", unit="услуга", unit_cost=150000, quantity=1)
     db.flush()
-    assert o.cost_materials == Decimal("400000.00")
-    assert o.cost_hardware == Decimal("250000.00")
-    assert o.cost_works == Decimal("300000.00")
-    assert o.cost_total == Decimal("950000.00")
-    # 400k×1.3 + 250k×1.2 + 300k×1.1 + 50k
-    assert o.price_total == Decimal("520000") + Decimal("300000") + Decimal("330000") + Decimal("50000")
-    assert o.markup_income == o.price_total - o.cost_total
-
-    # корректировка наценки конкретного заказа
-    orders.set_markups(ctx, o.id, materials=0)
-    assert o.price_total == Decimal("400000") + Decimal("300000") + Decimal("330000") + Decimal("50000")
-
-    # удаление позиции пересчитывает итог
-    orders.remove_item(ctx, o.id, o.items[-1].id)
-    assert o.cost_works == 0
+    assert o.cost_total == Decimal("2380000")                       # 1.980.000 + 250.000 + 150.000
+    assert all(it.price == it.cost for it in o.items)               # без наценок на позиции
+    assert o.workshop_fee == Decimal("238000")                      # 10 % от общей суммы
+    assert o.price_total == Decimal("2380000") + Decimal("238000") + Decimal("50000")
+    # рабочие: процент от итога и фиксированная сумма; клиенту не добавляются
+    master = employees.create(ctx, name="Бахтиёр", position="Мастер", pay_type="percent", pay_rate=5)
+    helper = employees.create(ctx, name="Азиз", position="Помощник мастера", pay_type="fixed", pay_rate=100000)
+    total_before = o.price_total
+    orders.add_worker(ctx, o.id, master.id)
+    orders.add_worker(ctx, o.id, helper.id)
+    assert o.price_total == total_before
+    assert o.workers_cost == Decimal("133400") + Decimal("100000")  # 5 % от 2.668.000
+    assert o.profit == Decimal("288000") - Decimal("233400")
+    # смена наценки заказа пересчитывает и процент рабочего
+    orders.set_markups(ctx, o.id, works=0)
+    assert o.price_total == Decimal("2430000") and o.workers[0].amount == Decimal("121500")
+    orders.remove_worker(ctx, o.id, o.workers[1].id)
+    assert o.workers_cost == Decimal("121500")
 
 
 def test_markup_snapshot_is_per_order(db):
     ctx = make_enterprise(db)
+    accounts.set_markups(ctx, works=15)
     o = orders.create(ctx, client_name="A")
-    accounts.set_markups(ctx, materials=99)
-    assert o.markup_materials == Decimal("30")
+    accounts.set_markups(ctx, works=99)
+    assert o.markup_works == Decimal("15")
     o2 = orders.create(ctx, client_name="B")
-    assert o2.markup_materials == Decimal("99")
+    assert o2.markup_works == Decimal("99")
     assert o2.number == o.number + 1
 
 

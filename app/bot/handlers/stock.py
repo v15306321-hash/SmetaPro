@@ -41,6 +41,7 @@ TYPES = {
 UNITS_FOR = {"Фурнитура": ["шт", "компл", "пара", "уп"], "Краска": ["л", "кг"]}
 STD_SHEETS = [(1220, 2440), (1830, 2750), (2070, 2800), (2800, 2070)]
 
+OWN_SIZE = "✍Свой размер"
 E_SETUP = "📝Настроить"
 E_BUY = "✅Приобрести настройку"
 NEW_ITEM = "📝Добавить новый"
@@ -62,6 +63,8 @@ class Stock(StatesGroup):
     name = State()
     mtype = State()
     size = State()
+    size_w = State()
+    size_h = State()
     unit = State()
     price = State()
     qty = State()
@@ -220,7 +223,8 @@ async def _set_type(message: Message, state: FSMContext, t: str):
         await state.set_state(Stock.size)
         await message.answer("✅ Отлично\n\n✍Теперь укажите какая ширина и высота у одного листа этого материала\n\n"
                              "Например: 1220 × 2440 мм",
-                             reply_markup=rk(*grid([f"{w} × {h}" for w, h in sizes[:6]], 2), [BACK, _exit_btn(data)]))
+                             reply_markup=rk(*grid([f"{w} × {h}" for w, h in sizes[:6]], 2), [OWN_SIZE],
+                                             [BACK, _exit_btn(data)]))
     elif unit is None:
         await state.set_state(Stock.unit)
         await message.answer("✅ Отлично\n\n✍В чём считать эту позицию?",
@@ -237,6 +241,49 @@ async def size_back(message: Message, state: FSMContext):
         await start_new(message, state, ItemKind.hardware, "order")
     else:
         await ask_type(message, state)
+
+
+@router.message(Stock.size, F.text == OWN_SIZE)
+async def size_own(message: Message, state: FSMContext):
+    data = await state.get_data()
+    await state.set_state(Stock.size_w)
+    await message.answer("✍ Укажите ширину одного листа в миллиметрах:", reply_markup=rk([BACK, _exit_btn(data)]))
+
+
+def _mm(text: str) -> int | None:
+    import re as _re
+    m = _re.search(r"\d{2,5}", text)
+    v = int(m.group(0)) if m else None
+    return v if v and 100 <= v <= 10000 else None
+
+
+@router.message(Stock.size_w, F.text)
+async def size_w(message: Message, state: FSMContext):
+    data = await state.get_data()
+    if message.text == BACK:
+        await _set_type(message, state, T_BODY)
+        return
+    w = _mm(message.text)
+    if not w:
+        await message.answer("Напишите ширину числом в миллиметрах, например 1220")
+        return
+    await state.update_data(sheet_w=w)
+    await state.set_state(Stock.size_h)
+    await message.answer("✅Отлично!\n\n✍ Теперь укажите высоту листа в миллиметрах:",
+                         reply_markup=rk([BACK, _exit_btn(data)]))
+
+
+@router.message(Stock.size_h, F.text)
+async def size_h(message: Message, state: FSMContext):
+    if message.text == BACK:
+        await size_own(message, state)
+        return
+    h = _mm(message.text)
+    if not h:
+        await message.answer("Напишите высоту числом в миллиметрах, например 2440")
+        return
+    await state.update_data(sheet=[(await state.get_data())["sheet_w"], h])
+    await ask_price(message, state)
 
 
 @router.message(Stock.size, F.text)

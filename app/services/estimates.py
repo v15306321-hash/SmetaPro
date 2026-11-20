@@ -46,7 +46,8 @@ def build_pdf_data(ctx: Ctx, order: Order, uid: str, created_at: datetime, with_
                    client_name=order.client_name, client_phone=order.client_phone,
                    client_address=order.client_address, sections=sections,
                    extra_label=ent.fixed_addition_label or "Дополнительные услуги",
-                   extra_amount=D(order.fixed_addition), total=D(order.price_total))
+                   extra_amount=D(order.fixed_addition), total=D(order.price_total),
+                   fee_label="Стоимость работы цеха", fee_amount=D(order.workshop_fee))
 
 
 def generate(ctx: Ctx, order_id: int) -> Estimate:

@@ -34,6 +34,10 @@ ROLE_PERMISSIONS: dict[Role, set[str]] = {
                   "expenses.view", "expenses.edit"},
     Role.manager: {"orders.view", "orders.edit", "orders.status", "estimates.create",
                    "materials.view"},
+    # Сотрудник, которому владелец разрешил составлять сметы: расчёты, сметы, база материалов.
+    # Подписка, сотрудники, настройки и финансы предприятия ему недоступны.
+    Role.employee: {"orders.view", "orders.edit", "orders.status", "estimates.create",
+                    "materials.view", "materials.edit", "waste.edit"},
 }
 
 ROLE_TITLES = {
@@ -41,6 +45,7 @@ ROLE_TITLES = {
     Role.admin: "Администратор",
     Role.master: "Мастер",
     Role.manager: "Менеджер",
+    Role.employee: "Сотрудник",
 }
 
 
