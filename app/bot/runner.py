@@ -22,7 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.bot.core import MENU_BUTTONS
-from app.bot.handlers import admin, business, catalog, orders, start
+from app.bot.handlers import admin, business, calc, expenses, start, stock
 from app.config import get_settings
 from app.db import session_scope
 from app.models import Notification, ProcessedUpdate, User, utcnow
@@ -83,7 +83,7 @@ def _make_dispatcher() -> Dispatcher:
     dp = Dispatcher()
     dp.update.outer_middleware(DedupMiddleware())
     dp.message.outer_middleware(MenuResetMiddleware())
-    dp.include_routers(start.router, admin.router, orders.router, catalog.router, business.router)
+    dp.include_routers(start.router, admin.router, calc.router, stock.router, expenses.router, business.router)
 
     @dp.errors()
     async def on_error(event):

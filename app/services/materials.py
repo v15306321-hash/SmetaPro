@@ -59,6 +59,42 @@ def categories(ctx: Ctx, kind: ItemKind | None = None) -> list[str]:
     return sorted({c for c in ctx.db.scalars(q.distinct()) if c})
 
 
+def recent_prices(ctx: Ctx, category: str | None = None, kind: ItemKind | None = None, limit: int = 6) -> list:
+    """Разные цены, введённые ранее (новые сначала), — для кнопок быстрого ввода цены.
+    Многие материалы отличаются только цветом, поэтому цена часто повторяется."""
+    q = select(Material.price).where(Material.enterprise_id == ctx.eid)
+    if category:
+        q = q.where(Material.category == category)
+    if kind:
+        q = q.where(Material.kind == kind)
+    out = []
+    for v in ctx.db.scalars(q.order_by(Material.id.desc()).limit(100)):
+        if v not in out:
+            out.append(v)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def recent_sheet_sizes(ctx: Ctx, limit: int = 4) -> list[tuple[int, int]]:
+    out: list[tuple[int, int]] = []
+    for attrs in ctx.db.scalars(select(Material.attrs).where(Material.enterprise_id == ctx.eid,
+                                                              Material.attrs.is_not(None))
+                                .order_by(Material.id.desc()).limit(100)):
+        if attrs and attrs.get("sheet_w") and attrs.get("sheet_h"):
+            size = (int(attrs["sheet_w"]), int(attrs["sheet_h"]))
+            if size not in out:
+                out.append(size)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def count_kind(ctx: Ctx, kind: ItemKind) -> int:
+    return ctx.db.scalar(select(func.count(Material.id)).where(Material.enterprise_id == ctx.eid,
+                                                               Material.kind == kind)) or 0
+
+
 def get(ctx: Ctx, material_id: int) -> Material:
     m = ctx.db.get(Material, material_id)
     if not m or m.enterprise_id != ctx.eid:  # изоляция предприятий

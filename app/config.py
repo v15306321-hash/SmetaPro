@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     # Показывать Telegram Login Widget (нужно указать домен сайта в @BotFather: /setdomain)
     telegram_login_widget: bool = False
 
+    # Стоимость услуги «настройка базы материалов специалистом», сум
+    setup_service_price: int = 100000
+
     # Контакты поддержки (предоставляются заказчиком)
     support_telegram: str = ""
     support_phone: str = ""

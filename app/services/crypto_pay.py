@@ -37,7 +37,7 @@ def create_invoice(ctx: Ctx, pr: PaymentRequest) -> str:
         r = c.post(f"{s.crypto_pay_api_url}/createInvoice",
                    headers={"Crypto-Pay-API-Token": s.crypto_pay_api_token},
                    json={"currency_type": "fiat", "fiat": "UZS", "amount": str(pr.amount),
-                         "description": f"Furniture Estimate {pr.plan_code} ({pr.uid})", "payload": pr.uid})
+                         "description": f"SmetaPro {pr.plan_code} ({pr.uid})", "payload": pr.uid})
     data = r.json()
     if not data.get("ok"):
         log.warning("createInvoice failed: %s", data.get("error"))

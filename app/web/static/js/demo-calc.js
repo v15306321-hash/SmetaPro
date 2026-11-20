@@ -12,7 +12,7 @@
     par: "M20 18h110M20 56h110",
   };
   let shape = "u";
-  const fmt = (n) => Math.round(n).toLocaleString("ru-RU").replace(/,/g, " ") + " сум";
+  const fmt = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ".") + " сум";
   const num = (v) => parseFloat(String(v || "").replace(",", ".")) || 0;
 
   function setShape(s) {

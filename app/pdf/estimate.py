@@ -105,7 +105,7 @@ def render(data: PdfData) -> bytes:
         canvas.setFont("Sans", 7)
         canvas.setFillColor(MUTED)
         canvas.drawString(15 * mm, 10 * mm,
-                          f"Смета {data.uid} · сформирована {data.created_at.strftime('%d.%m.%Y %H:%M')} · Furniture Estimate")
+                          f"Смета {data.uid} · сформирована {data.created_at.strftime('%d.%m.%Y %H:%M')} · SmetaPro")
         canvas.drawRightString(A4[0] - 15 * mm, 10 * mm, f"Стр. {doc.page}")
         canvas.setStrokeColor(ACCENT)
         canvas.setLineWidth(2)

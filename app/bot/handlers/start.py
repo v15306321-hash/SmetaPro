@@ -1,20 +1,21 @@
-"""/start, регистрация предприятия, deep-link'и (ref_, inv_, login_), веб-кабинет."""
+"""/start, регистрация предприятия, deep-link'и (ref_, inv_, login_), главное меню, веб-кабинет."""
 from __future__ import annotations
 
 from aiogram import F, Router
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import Message, ReplyKeyboardRemove
 
-from app.bot.core import BTN_WEB, answer, call, e, kb, main_menu
+from app.bot.core import BTN_SUB, BTN_WEB, HOME, SKIP, call, e, main_menu, rk
 from app.config import get_settings
-from app.core.errors import DomainError
 from app.core.permissions import ROLE_TITLES
-from app.db import session_scope
 from app.services import accounts, auth_web, staff, tariffs
 
 router = Router(name="start")
+
+CONFIRM_LOGIN = "✅ Подтвердить вход"
+CANCEL_LOGIN = "❌ Это не я"
 
 
 class Reg(StatesGroup):
@@ -23,7 +24,11 @@ class Reg(StatesGroup):
     address = State()
 
 
-def _status_text(ctx) -> str:
+class Login(StatesGroup):
+    confirm = State()
+
+
+def status_text(ctx) -> str:
     if not ctx.enterprise:
         return ""
     us = tariffs.usage(ctx.db, ctx.eid)
@@ -31,25 +36,35 @@ def _status_text(ctx) -> str:
     role = ROLE_TITLES[ctx.role]
     if sub:
         return (f"🏭 <b>{e(ctx.enterprise.name)}</b> · {role}\n"
-                f"Тариф <b>{us['plan'].title}</b> до {sub.ends_at:%d.%m.%Y} · смет {us['estimates_used']}/{us['estimates_limit']}")
-    return f"🏭 <b>{e(ctx.enterprise.name)}</b> · {role}\n🔒 Нет активной подписки — откройте «💳 Подписка»."
+                f"Тариф <b>{us['plan'].title}</b> до {sub.ends_at:%d.%m.%Y} · "
+                f"сметы {us['estimates_used']} из {us['estimates_limit']}")
+    return (f"🏭 <b>{e(ctx.enterprise.name)}</b> · {role}\n"
+            f"🔒 Подписка не активна — откройте «{BTN_SUB}».")
+
+
+async def show_home(message: Message, state: FSMContext, greeting: str | None = None):
+    await state.clear()
+    status = await call(message, status_text)
+    if status is not None:
+        await message.answer((greeting + "\n\n" if greeting else "🏛️ Главное меню\n\n") + status,
+                             reply_markup=main_menu())
 
 
 @router.message(CommandStart())
 async def start(message: Message, command: CommandObject, state: FSMContext):
     await state.clear()
     arg = (command.args or "").strip()
-    tg = message.from_user
 
     if arg.startswith("login_"):
-        await message.answer("🔐 Вход на сайт Furniture Estimate.\nЕсли это вы открыли страницу входа — подтвердите.",
-                             reply_markup=kb([("✅ Подтвердить вход", f"login:{arg[6:]}")], [("Отмена", "noop")]))
+        await state.set_state(Login.confirm)
+        await state.update_data(token=arg[6:])
+        await message.answer("🔐 Вход на сайт SmetaPro.\n\nЕсли это вы сейчас открыли страницу входа — подтвердите.",
+                             reply_markup=rk([CONFIRM_LOGIN], [CANCEL_LOGIN]))
         return
 
     ref = arg[4:] if arg.startswith("ref_") else None
 
     def work(ctx):
-        # Привязка к рефереру — только для новых пользователей без предприятия
         if ref and not ctx.user.referred_by_id and not ctx.enterprise:
             accounts.attach_referral(ctx.db, ctx.user, ref)
         joined = None
@@ -57,7 +72,7 @@ async def start(message: Message, command: CommandObject, state: FSMContext):
             m = staff.accept(ctx.db, ctx.user, arg[4:])
             joined = (m.enterprise.name, ROLE_TITLES[m.role])
             ctx = accounts.load_ctx(ctx.db, ctx.user)
-        return bool(ctx.enterprise), _status_text(ctx), joined
+        return bool(ctx.enterprise), status_text(ctx), joined
 
     res = await call(message, work, need_enterprise=False)
     if res is None:
@@ -66,11 +81,13 @@ async def start(message: Message, command: CommandObject, state: FSMContext):
     if joined:
         await message.answer(f"👥 Вы присоединились к «{e(joined[0])}» как {joined[1].lower()}.")
     if has_ent:
-        await message.answer(f"Здравствуйте, {e(tg.first_name)}!\n\n{status}", reply_markup=main_menu())
+        await message.answer(f"Здравствуйте, {e(message.from_user.first_name)}!\n\n{status}", reply_markup=main_menu())
         return
     await message.answer(
-        "👋 <b>Furniture Estimate</b> — расчёт стоимости мебели, PDF-сметы, затраты и аналитика для вашего цеха.\n\n"
-        "Давайте зарегистрируем предприятие. Как оно называется?")
+        "👋 Добро пожаловать в <b>SmetaPro</b>!\n\n"
+        "Здесь вы считаете стоимость мебели, отправляете клиентам PDF-сметы и видите, сколько зарабатывает цех.\n\n"
+        "Давайте зарегистрируем ваше предприятие.\n\n🏭 Как оно называется?",
+        reply_markup=ReplyKeyboardRemove())
     await state.set_state(Reg.name)
 
 
@@ -78,25 +95,26 @@ async def start(message: Message, command: CommandObject, state: FSMContext):
 async def reg_name(message: Message, state: FSMContext):
     name = message.text.strip()
     if not 2 <= len(name) <= 200:
-        await message.answer("Название — от 2 до 200 символов. Попробуйте ещё раз.")
+        await message.answer("Название должно быть от 2 до 200 символов. Попробуйте ещё раз 🙂")
         return
     await state.update_data(name=name)
     await state.set_state(Reg.phone)
-    await message.answer("Телефон предприятия (для сметы). Или «-», чтобы пропустить.")
+    await message.answer("✅Отлично!\n\n📞 Укажите телефон предприятия — он будет в сметах. (Или пропустить)",
+                         reply_markup=rk([SKIP]))
 
 
 @router.message(Reg.phone, F.text)
 async def reg_phone(message: Message, state: FSMContext):
-    phone = message.text.strip()
-    await state.update_data(phone=None if phone == "-" else phone[:32])
+    phone = None if message.text == SKIP else message.text.strip()[:32]
+    await state.update_data(phone=phone)
     await state.set_state(Reg.address)
-    await message.answer("Адрес предприятия. Или «-», чтобы пропустить.")
+    await message.answer("✅Отлично!\n\n📍 Укажите адрес предприятия. (Или пропустить)", reply_markup=rk([SKIP]))
 
 
 @router.message(Reg.address, F.text)
 async def reg_address(message: Message, state: FSMContext):
     data = await state.get_data()
-    address = None if message.text.strip() == "-" else message.text.strip()
+    address = None if message.text == SKIP else message.text.strip()
 
     def work(ctx):
         accounts.register_enterprise(ctx.db, ctx.user, name=data["name"], phone=data.get("phone"), address=address)
@@ -106,60 +124,62 @@ async def reg_address(message: Message, state: FSMContext):
         await state.clear()
         await message.answer(
             f"✅ Предприятие «{e(data['name'])}» зарегистрировано!\n\n"
-            "Дальше:\n1. «💳 Подписка» — выберите тариф и оплатите.\n"
-            "2. «⚙️ Настройки» — задайте наценки.\n3. «📦 Материалы» — заполните базу.\n"
-            "4. «🧮 Новый расчёт» — первая смета.", reply_markup=main_menu())
+            "Что дальше:\n"
+            f"1️⃣ «{BTN_SUB}» — выберите тариф и оплатите.\n"
+            "2️⃣ «⚙️ Настройки» — задайте наценки.\n"
+            "3️⃣ «🧮 Новый расчёт» — первая смета.", reply_markup=main_menu())
 
 
-@router.callback_query(F.data.startswith("login:"))
-async def login_confirm(cq: CallbackQuery):
-    token = cq.data.split(":", 1)[1]
+# ---------------------------------------------------------------- вход на сайт
+
+@router.message(Login.confirm, F.text == CONFIRM_LOGIN)
+async def login_confirm(message: Message, state: FSMContext):
+    token = (await state.get_data()).get("token", "")
 
     def work(ctx):
         auth_web.confirm_login(ctx.db, ctx.user, token)
         return True
 
-    if await call(cq, work, need_enterprise=False):
-        await answer(cq, "✅ Вход подтверждён. Вернитесь в браузер — страница откроется автоматически.", edit=True)
+    if await call(message, work, need_enterprise=False):
+        await state.clear()
+        await message.answer("✅ Вход подтверждён. Вернитесь в браузер — кабинет откроется автоматически.",
+                             reply_markup=main_menu())
 
 
-@router.callback_query(F.data == "noop")
-async def noop(cq: CallbackQuery):
-    await cq.answer()
-    try:
-        await cq.message.delete()
-    except Exception:
-        pass
-
-
-@router.message(F.text == BTN_WEB)
-@router.message(Command("web"))
-async def web(message: Message):
-    s = get_settings()
-    await message.answer("🌐 Веб-кабинет: подписка, платежи, сотрудники, аналитика и сметы.\n"
-                         "На сайте нажмите «Войти через Telegram» и подтвердите вход здесь.",
-                         reply_markup=kb([("Открыть кабинет", f"{s.base_url.rstrip('/')}/login")]))
-
-
-@router.message(Command("menu"))
-async def menu(message: Message, state: FSMContext):
+@router.message(Login.confirm, F.text == CANCEL_LOGIN)
+async def login_cancel(message: Message, state: FSMContext):
     await state.clear()
-    status = await call(message, _status_text)
-    if status is not None:
-        await message.answer(status, reply_markup=main_menu())
+    await message.answer("Хорошо, вход не подтверждён. Если это были не вы — просто ничего не делайте.",
+                         reply_markup=main_menu())
+
+
+# ---------------------------------------------------------------- навигация
+
+@router.message(F.text == HOME)
+@router.message(Command("menu"))
+async def home(message: Message, state: FSMContext):
+    await show_home(message, state)
 
 
 @router.message(Command("cancel"))
 async def cancel(message: Message, state: FSMContext):
+    await show_home(message, state, "Действие отменено.")
+
+
+@router.message(F.text == BTN_WEB)
+@router.message(Command("web"))
+async def web(message: Message, state: FSMContext):
     await state.clear()
-    await message.answer("Действие отменено.", reply_markup=main_menu())
+    s = get_settings()
+    await message.answer(
+        "🌐 <b>Веб-кабинет SmetaPro</b>\n\nПодписка, платежи, сотрудники, аналитика с графиками и все сметы.\n\n"
+        f"Откройте {s.base_url.rstrip('/')}/login и нажмите «Войти через Telegram» — "
+        "подтверждение придёт сюда.", reply_markup=main_menu(), disable_web_page_preview=True)
 
 
 @router.message(Command("help"))
 async def help_(message: Message):
     await message.answer(
         "<b>Команды</b>\n/menu — главное меню\n/cancel — отменить текущее действие\n/web — веб-кабинет\n"
-        "/admin — панель администратора платформы\n\nПодробнее: " + get_settings().base_url.rstrip('/') + "/faq")
-
-
-_ = (DomainError, session_scope)
+        "/admin — панель администратора платформы\n\n"
+        f"Помощь: {get_settings().base_url.rstrip('/')}/faq", disable_web_page_preview=True)

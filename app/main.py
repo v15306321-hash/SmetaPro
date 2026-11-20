@@ -41,7 +41,7 @@ async def lifespan(_app: FastAPI):
 
 def create_app() -> FastAPI:
     s = get_settings()
-    app = FastAPI(title="Furniture Estimate API", version="1.0.0", lifespan=lifespan,
+    app = FastAPI(title="SmetaPro API", version="1.0.0", lifespan=lifespan,
                   docs_url="/api/docs", redoc_url=None, openapi_url="/api/openapi.json")
     app.add_middleware(RateLimitMiddleware)
 

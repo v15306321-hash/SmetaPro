@@ -1,4 +1,4 @@
-"""Модель данных Furniture Estimate.
+"""Модель данных SmetaPro.
 
 Все данные предприятий содержат enterprise_id; доступ к ним выполняется только
 через сервисный слой, который фильтрует запросы по предприятию (tenant isolation).
@@ -269,6 +269,9 @@ class Order(Base):
     comment: Mapped[str | None] = mapped_column(Text)
     status: Mapped[OrderStatus] = mapped_column(
         Enum(OrderStatus, native_enum=False, length=16), default=OrderStatus.new)
+    # Изделия заказа по порядку («Кухонный гарнитур», «Шкаф-купе»…) и сколько их запланировано
+    products: Mapped[list | None] = mapped_column(JSON)
+    products_planned: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     # Наценки зафиксированы в заказе, чтобы изменение настроек не меняло старые расчёты
     markup_materials: Mapped[Decimal] = mapped_column(Numeric(7, 2))
     markup_hardware: Mapped[Decimal] = mapped_column(Numeric(7, 2))

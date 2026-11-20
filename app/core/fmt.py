@@ -1,6 +1,7 @@
 """Форматирование денег, количеств и дат; сумма прописью (рус.)."""
+import re
 from datetime import datetime, timedelta
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 TASHKENT_OFFSET = timedelta(hours=5)  # Asia/Tashkent, UTC+5, без перехода на летнее время
 
@@ -21,7 +22,7 @@ def money(value, currency: str = "сум") -> str:
     v = money_round(value)
     whole = int(v)
     frac = abs(v - whole)
-    s = f"{whole:,}".replace(",", " ")
+    s = f"{whole:,}".replace(",", ".")  # 660.000 — привычный в Узбекистане формат
     if frac:
         s += "," + f"{frac:.2f}"[2:]
     return f"{s} {currency}" if currency else s
@@ -30,6 +31,36 @@ def money(value, currency: str = "сум") -> str:
 def money0(value, currency: str = "сум") -> str:
     """Целые суммы — для крупных показателей (KPI)."""
     return money(D(value).quantize(Decimal("1"), rounding=ROUND_HALF_UP), currency)
+
+
+_THOUSANDS = re.compile(r"^-?\d{1,3}(?:[.,]\d{3})+$")
+_PLAIN = re.compile(r"^-?\d+(?:[.,]\d+)?$")
+_FIRST_NUMBER = re.compile(r"\d+(?:[.,]\d+)?")
+
+
+def parse_money(text: str) -> Decimal:
+    """Сумма из свободного ввода: «660.000», «660 000 сум», «660000», «1.250.000,50»."""
+    s = re.sub(r"(?i)(сум|сўм|so'?m|uzs)", "", str(text)).replace("\u00a0", "").replace(" ", "").strip()
+    if "," in s and "." in s:            # 1.250.000,50
+        s = s.replace(".", "").replace(",", ".")
+    elif _THOUSANDS.match(s):            # 660.000 / 660,000
+        s = s.replace(".", "").replace(",", "")
+    elif _PLAIN.match(s):
+        s = s.replace(",", ".")
+    else:
+        raise ValueError(text)
+    try:
+        return Decimal(s)
+    except InvalidOperation:
+        raise ValueError(text)
+
+
+def parse_qty(text: str) -> Decimal:
+    """Количество из свободного ввода: «3», «1,5», «2.5 листа»."""
+    m = _FIRST_NUMBER.search(str(text).replace("\u00a0", ""))
+    if not m:
+        raise ValueError(text)
+    return Decimal(m.group(0).replace(",", "."))
 
 
 def qty(value) -> str:

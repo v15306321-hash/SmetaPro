@@ -84,7 +84,7 @@ def _next_number(db: Session, enterprise_id: int) -> int:
 
 
 def create(ctx: Ctx, *, title: str = "", client_name: str = "", client_phone: str | None = None,
-           client_address: str | None = None, comment: str | None = None) -> Order:
+           client_address: str | None = None, comment: str | None = None, products_planned: int = 1) -> Order:
     ctx.require("orders.edit")
     tariffs.require_active(ctx.db, ctx.eid)
     ent = ctx.enterprise
@@ -92,7 +92,9 @@ def create(ctx: Ctx, *, title: str = "", client_name: str = "", client_phone: st
               client_name=(client_name or "").strip()[:200], client_phone=(client_phone or "").strip()[:32] or None,
               client_address=(client_address or "").strip()[:300] or None, comment=comment,
               markup_materials=ent.markup_materials, markup_hardware=ent.markup_hardware,
-              markup_works=ent.markup_works, fixed_addition=ent.fixed_addition, created_by_id=ctx.user.id)
+              markup_works=ent.markup_works, fixed_addition=ent.fixed_addition, created_by_id=ctx.user.id,
+              products=[title.strip()[:120]] if (title or "").strip() else [],
+              products_planned=max(1, min(int(products_planned or 1), 100)))
     ctx.db.add(o)
     ctx.db.flush()
     _history(ctx, o, None, OrderStatus.new)
@@ -101,6 +103,47 @@ def create(ctx: Ctx, *, title: str = "", client_name: str = "", client_phone: st
         notify(ctx.db, ent.owner_id, f"📋 {ctx.user.full_name or 'Сотрудник'} создал заказ №{o.number}"
                                      f" {o.client_name}".strip())
     return o
+
+
+def set_product(ctx: Ctx, order_id: int, index: int, name: str) -> Order:
+    """Задать название изделия №(index+1) заказа. Заголовок заказа = изделия через запятую."""
+    ctx.require("orders.edit")
+    o = get(ctx, order_id)
+    name = (name or "").strip()[:120]
+    if not name:
+        raise ValidationError("Укажите название изделия.")
+    products = list(o.products or [])
+    while len(products) <= index:
+        products.append("")
+    products[index] = name
+    o.products = products
+    o.products_planned = max(o.products_planned or 1, len(products))
+    o.title = ", ".join(p for p in products if p)[:200]
+    return o
+
+
+def products_of(o: Order) -> list[str]:
+    names = [p for p in (o.products or []) if p]
+    if not names and o.title:
+        names = [o.title]
+    for it in o.items:  # позиции старых заказов, созданных до появления списка изделий
+        if it.section and it.section not in names:
+            names.append(it.section)
+    return names
+
+
+def recent_work_prices(ctx: Ctx, limit: int = 6) -> list[Decimal]:
+    """Последние разные цены работ цеха предприятия — для кнопок быстрого ввода."""
+    rows = ctx.db.execute(select(OrderItem.unit_cost).join(Order, Order.id == OrderItem.order_id)
+                          .where(Order.enterprise_id == ctx.eid, OrderItem.kind == ItemKind.work)
+                          .order_by(OrderItem.id.desc()).limit(50)).scalars()
+    out: list[Decimal] = []
+    for v in rows:
+        if v not in out:
+            out.append(v)
+        if len(out) >= limit:
+            break
+    return out
 
 
 def list_orders(ctx: Ctx, status: OrderStatus | None = None, search: str | None = None,

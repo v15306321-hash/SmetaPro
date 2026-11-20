@@ -1,4 +1,5 @@
-"""Сценарии бота через настоящий Dispatcher с подменённой сессией Telegram API."""
+"""Сценарии бота через настоящий Dispatcher с подменённой сессией Telegram API.
+Бот работает только кнопками мини-меню (ReplyKeyboard) — тесты нажимают их как пользователь."""
 import asyncio
 import itertools
 from datetime import datetime
@@ -6,11 +7,12 @@ from datetime import datetime
 import pytest
 from aiogram.client.session.base import BaseSession
 from aiogram.methods import TelegramMethod
-from aiogram.types import CallbackQuery, Chat, Document, Message, PhotoSize, Update, User as TgUser
+from aiogram.types import (Chat, Document, InlineKeyboardMarkup, Message, MessageId, PhotoSize,
+                           ReplyKeyboardMarkup, Update, User as TgUser)
 
-from app.bot.core import BTN_NEW, BTN_SUB
+from app.bot.core import BTN_NEW, BTN_SUB, HOME, SKIP, TO_ORDER_LONG
 from app.bot.runner import build, deliver_notifications
-from app.models import Order, PaymentRequest, PaymentStatus, Subscription
+from app.models import Enterprise, Order, PaymentRequest, PaymentStatus, Subscription
 from app.services import tariffs
 
 _ids = itertools.count(1)
@@ -26,6 +28,8 @@ class FakeSession(BaseSession):
         ret = method.__returning__
         if ret is bool:
             return True
+        if ret is MessageId:
+            return MessageId(message_id=next(_ids))
         chat_id = getattr(method, "chat_id", 1) or 1
         return Message(message_id=next(_ids), date=datetime.now(), chat=Chat(id=chat_id, type="private"),
                        text=getattr(method, "text", None) or "ok")
@@ -37,10 +41,8 @@ class FakeSession(BaseSession):
         pass
 
     def texts(self):
-        out = []
-        for m in self.calls:
-            out.append(getattr(m, "text", None) or getattr(m, "caption", None) or "")
-        return out
+        return [(getattr(m, "text", None) or getattr(m, "caption", None) or "").replace("\xa0", " ")
+                for m in self.calls]
 
 
 class TgClient:
@@ -62,128 +64,241 @@ class TgClient:
         self._run(Update(update_id=next(_ids), message=msg))
         return self.last()
 
-    def click(self, data: str):
-        msg = Message(message_id=next(_ids), date=datetime.now(), chat=self.chat, text="card")
-        cq = CallbackQuery(id=str(next(_ids)), from_user=self.user, chat_instance="x", data=data, message=msg)
-        self._run(Update(update_id=next(_ids), callback_query=cq))
-        return self.last()
+    def press(self, button: str) -> str:
+        """Нажать кнопку мини-меню: проверяем, что такая кнопка действительно показана."""
+        assert button in self.buttons(), f"нет кнопки {button!r}, есть: {self.buttons()}"
+        return self.send(button)
 
     def last(self) -> str:
         texts = [t for t in self.session.texts() if t]
         return texts[-1] if texts else ""
 
-    def buttons(self) -> list[tuple[str, str]]:
+    def buttons(self) -> list[str]:
         for m in reversed(self.session.calls):
             markup = getattr(m, "reply_markup", None)
-            if markup is not None and hasattr(markup, "inline_keyboard"):
-                return [(b.text, b.callback_data or b.url) for row in markup.inline_keyboard for b in row]
+            if isinstance(markup, ReplyKeyboardMarkup):
+                return [b.text.replace("\xa0", " ") for row in markup.keyboard for b in row]
         return []
+
+    def no_inline(self):
+        assert not any(isinstance(getattr(m, "reply_markup", None), InlineKeyboardMarkup) for m in self.session.calls)
 
 
 @pytest.fixture()
 def owner(db):
     c = TgClient(31337, "Сардор")
-    c.send("/start")
-    assert "Как оно называется" in c.last()
-    c.send("Цех Сардора")
-    c.send("+998901112233")
-    assert "регистрирован" in c.send("Ташкент")
+    assert "Как оно называется" in c.send("/start")
+    assert "телефон предприятия" in c.send("Цех Сардора")
+    c.press(SKIP)
+    assert "регистрирован" in c.press(SKIP)
     return c
 
 
-def test_registration_and_payment_flow(db, owner):
+def _activate(db, plan="PRO"):
+    ent = db.query(Enterprise).first()
+    tariffs.activate(db, ent.id, plan, None)
+    db.commit()
+    return ent
+
+
+def test_new_calc_step_by_step(db, owner):
+    """Сценарий из примера заказчика: поэтапный расчёт, добавление материала с размером листа и ценой."""
     c = owner
-    assert "Подписки ещё нет" in c.send(BTN_SUB)
-    assert ("START — 149 000 сум", "sub:plan:START") in c.buttons()
-    c.click("sub:plan:START")
-    text = c.click("sub:pay:START:HUMO")
-    assert "9860 0101 4036 3283" in text and "чека" in text
-    c.send("просто текст")
-    assert "Ожидаю фото" in c.last()
-    c.send(photo="RECEIPT1")
+    _activate(db)
+    assert "Новый расчет открыт" in c.press(BTN_NEW)
+    assert "Укажите имя клиента" in c.last() and SKIP in c.buttons()
+    assert "📞Укажите номер телефона клиента" in c.send("Ким Марина")
+    assert "какое количество мебели" in c.send("+998 90 000 00 00")
+    assert {"1", "10", "Другое число📝"} <= set(c.buttons())
+    assert "мебель какого формата в №1" in c.press("2")
+    assert {"Кухонный гарнитур", "Шкаф-купе", "Другое изделие📝"} <= set(c.buttons())
+    card = c.press("Кухонный гарнитур")
+    assert "Заказ №1 — Кухонный гарнитур" in card and "Позиций пока нет" in card and "Статус: Новый" in card
+    assert {"📦Материалы", "🔩Фурнитура", "💵Настроить наценку", "🛠Работа цеха", "👥Добавить рабочих",
+            "🛋Изделие №2", HOME, "↩️Назад"} <= set(c.buttons())
+
+    # пустая база → предложение настроить
+    assert "В вашей базе пока нет материалов" in c.press("📦Материалы")
+    assert {"📝Настроить", "✅Приобрести настройку", "🔙Заказ"} <= set(c.buttons())
+    assert "Введите название материала" in c.press("📝Настроить")
+    assert "Укажите тип материала" in c.send("Акрил Темный асфальт")
+    assert "ширина и высота у одного листа" in c.press("📦Корпусное покрытие")
+    price_q = c.send("1220 × 2440 мм")
+    assert "стоимость одного листа" in price_q and "✍Ввести вручную" in c.buttons()
+    assert "Сколько листов «Акрил Темный асфальт» понадобится для «Кухонный гарнитур»" in c.send("660.000")
+    added = c.press("3")
+    assert "📦МАТЕРИАЛ №1" in added and "Размер: 1220 × 2440 мм" in added and "Стоимость: 660.000 сум" in added
+    assert "✅Успешно сохранился" in added and "3 листа — 1.980.000 сум" in added
+    assert {"📝Добавить ещё", TO_ORDER_LONG} <= set(c.buttons())
+    card = c.press(TO_ORDER_LONG)
+    assert "📦 Материалы: Акрил Темный асфальт (3 листа)." in card
+    assert "Себестоимость: 1.980.000 сум" in card and "Итого клиенту: 2.574.000 сум" in card  # наценка 30%
+
+    # второй материал: цена подсказывается кнопкой, размер листа — тоже
+    c.press("📦Материалы")
+    assert "Акрил Темный асфальт · 660.000/лист" in c.buttons()
+    c.press("📝Добавить новый")
+    c.send("Акрил Белый глянец")
+    c.press("📦Корпусное покрытие")
+    assert "1220 × 2440" in c.buttons()
+    c.press("1220 × 2440")
+    assert "660.000" in c.buttons()                      # прошлая цена — одной кнопкой
+    c.press("660.000")
+    assert "1,5 листа" in c.send("1,5")
+    c.press(TO_ORDER_LONG)
+
+    # фурнитура: тип не спрашивается, единица — кнопкой
+    assert "нет фурнитуры" in c.press("🔩Фурнитура")
+    c.press("📝Настроить")
+    assert "В чём считать" in c.send("Петля Blum с доводчиком")
+    c.press("шт")
+    c.send("25.000")
+    assert "🔩ФУРНИТУРА №1" in c.press("10")
+    c.press(TO_ORDER_LONG)
+
+    # работа цеха и рабочие
+    c.press("🛠Работа цеха")
+    c.press("Сборка и монтаж")
+    assert "Работа «Сборка и монтаж» добавлена — 900.000 сум" in c.send("900.000")
+    c.press("👥Добавить рабочих")
+    c.press("2")
+    assert "2 чел. × 300.000 сум = 600.000 сум" in c.send("300.000")
+
+    # наценки заказа — по шагам
+    c.press("💵Настроить наценку")
+    c.press("0")
+    c.press("0")
+    c.press("10")
+    card = c.press(SKIP)
+    assert "Наценки: материалы 0% · фурнитура 0% · работа цеха 10%" in card
+    # 1.980.000 + 990.000 + 250.000 + (900.000 + 600.000) × 1,1
+    assert "Итого клиенту: 4.870.000 сум" in card
+
+    # изделие №2
+    assert "№2" in c.press("🛋Изделие №2")
+    card = c.press("Шкаф-купе")
+    assert "Заказ №1 — Кухонный гарнитур, Шкаф-купе" in card and "Шкаф-купе (изделие 2 из 2)" in card
+    assert "🛋Сменить изделие" in c.buttons()
+
+    # PDF, статус, удаление, расход
+    c.press("📄PDF-смета")
+    docs = [m for m in c.session.calls if type(m).__name__ == "SendDocument"]
+    assert docs and "Смета EST-" in docs[-1].caption and "4.870.000" in docs[-1].caption.replace("\xa0", " ")
+    c.press("🔄Статус")
+    assert "Статус: В работе" in c.press("В работе")
+    c.press("🗑Удалить позицию")
+    remove_btn = next(b for b in c.buttons() if b.startswith("❌ 1."))
+    assert "Позиция удалена" in c.press(remove_btn)
+    c.press("♻️Расход и отходы")
+    row = next(b for b in c.buttons() if b.startswith("✏️"))
+    c.press(row)
+    c.send("2")
+    assert "Сохранено" in c.send("0,5")
+
+    # назад к списку заказов и в главное меню
+    c.press("↩️Назад")
+    c.press("↩️Назад")
+    assert any(b.startswith("№1 · Ким Марина") for b in c.buttons())
+    assert "Главное меню" in c.press(HOME)
+    c.no_inline()
+
+    o = db.query(Order).one()
+    db.refresh(o)
+    assert o.products == ["Кухонный гарнитур", "Шкаф-купе"] and o.products_planned == 2
+
+
+def test_menu_button_interrupts_dialog(db, owner):
+    c = owner
+    _activate(db)
+    c.press(BTN_NEW)
+    c.send("Клиент")
+    assert "Ваши заказы" in c.send("📋 Заказы") or "Заказов пока нет" in c.last()
+
+
+def test_payment_flow_and_admin_review(db, owner):
+    c = owner
+    assert "Подписки ещё нет" in c.press(BTN_SUB)
+    start_btn = next(b for b in c.buttons() if b.startswith("START — 149.000"))
+    assert "Выберите способ оплаты" in c.press(start_btn)
+    text = c.press("HUMO")
+    assert "9860 0101 4036 3283" in text and "Отправьте сюда фото или PDF чека" in text
+    assert "Жду фото" in c.send("просто текст")
+    assert "Чек получен" in c.send(photo="RECEIPT1")
     db.expire_all()
     pr = db.query(PaymentRequest).one()
     assert pr.status == PaymentStatus.pending and pr.receipt_file_id == "RECEIPT1"
 
-    # суперадмин подтверждает в боте
     admin = TgClient(999, "Админ")
     admin.send("/admin")
+    pay_btn = next(b for b in admin.buttons() if b.startswith(pr.uid))
+    admin.press(pay_btn)
     assert any(getattr(m, "photo", None) == "RECEIPT1" for m in admin.session.calls)
-    admin.click(f"adm:ok:{pr.id}")
-    admin.click(f"adm:ok:{pr.id}")  # повторное нажатие
+    assert "подтверждена" in admin.press("✅ Подтвердить")
     db.expire_all()
     assert db.query(Subscription).count() == 1
     assert tariffs.current_subscription(db, pr.enterprise_id).plan_code == "START"
+    admin.no_inline()
 
-    # доставка уведомлений
     sess = FakeSession()
     c.bot.session = sess
     asyncio.run(deliver_notifications(c.bot))
     assert any("подтверждена" in t for t in sess.texts())
-    assert asyncio.run(deliver_notifications(c.bot)) == 0  # повторно не отправляется
+    assert asyncio.run(deliver_notifications(c.bot)) == 0
 
 
-def test_order_flow(db, owner):
+def test_setup_service_request(db, owner):
+    """«✅Приобрести настройку»: каталог пересылается администраторам, учитывается лимит тарифа."""
     c = owner
-    from app.models import Enterprise
-    ent = db.query(Enterprise).one()
-    tariffs.activate(db, ent.id, "PRO", None)
-    db.commit()
+    _activate(db, "START")
+    admin = TgClient(999, "Админ")
+    admin.send("/start")  # создаёт пользователя-суперадмина
+    c.press(BTN_NEW)
+    c.press(SKIP)
+    c.press(SKIP)
+    c.press("1")
+    c.press("Стол")
+    c.press("📦Материалы")
+    text = c.press("✅Приобрести настройку")
+    assert "100.000 сум" in text and "до 80 позиций" in text
+    assert "Пока ничего не получено" in c.press("✅ Готово, всё отправил")
+    assert "Получено" in c.send(document="CATALOG1")
+    copies = [m for m in c.session.calls if type(m).__name__ == "CopyMessage"]
+    assert copies and copies[0].chat_id == 999
+    assert "Заявка на настройку отправлена" in c.press("✅ Готово, всё отправил")
 
-    c.send("⚙️ Настройки")
-    c.click("set:mk")
-    c.send("30 20 10 50000")
-    assert "материалы 30%" in c.last()
 
-    c.send("📦 Материалы")
-    c.click("m:add:material")
-    c.send("ЛДСП")
-    c.send("ЛДСП Egger 16")
-    c.click("m:unit:м²")
-    assert "Добавлено" in c.send("100000")
-
-    c.send(BTN_NEW)
-    c.send("Иван")
-    c.send("-")
-    card = c.send("Кухня")
-    assert "Заказ №1" in card and "Позиций пока нет" in card
-    oid = db.query(Order).one().id
-    c.click(f"oi:pick:{oid}:material:0")
-    mid = next(d for t, d in c.buttons() if d.startswith("oi:m:")).split(":")[3]
-    c.click(f"oi:m:{oid}:{mid}")
-    card = c.send("2000x1000x2")          # 4 м² × 100 000 = 400 000 → ×1.3 = 520 000
-    assert "520 000" in card
-    c.click(f"oi:work:{oid}")
-    card = c.send("Сборка и монтаж; 300000")  # ×1.1 = 330 000
-    assert "Итого клиенту: 900 000 сум" in card  # 520 000 + 330 000 + 50 000
-
-    c.click(f"o:pdf:{oid}")
-    docs = [m for m in c.session.calls if type(m).__name__ == "SendDocument"]
-    assert docs and "Смета EST-" in docs[0].caption
-
-    c.click(f"o:set:{oid}:in_progress")
-    assert "В работе" in c.last()
-
-    c.click(f"w:show:{oid}")
-    assert "Расход по заказу" in c.last()
-    uid = next(d for t, d in c.buttons() if d.startswith("w:edit:")).split(":")[3]
-    c.click(f"w:edit:{oid}:{uid}")
-    assert "отходы 1" in c.send("5 1")
-
-    c.send("📊 Аналитика")
-    assert "Выручка (расчётная): <b>900 000 сум</b>" in c.last()
-
-    # кнопка меню прерывает незавершённый диалог
-    c.send(BTN_NEW)
-    c.send("📋 Заказы")
-    assert "Заказы" in c.last()
+def test_expenses_step_by_step(db, owner):
+    c = owner
+    _activate(db, "BUSINESS")
+    c.send("💸 Затраты")
+    c.press("➕ Добавить затрату")
+    assert "Сумма затраты «Распил»" in c.press("Распил")
+    assert "К какому заказу" in c.send("150.000")
+    assert "Комментарий" in c.press(SKIP)
+    assert "Затрата «Распил» 150.000 сум сохранена" in c.press(SKIP)
+    c.press("🏷 Новая категория")
+    assert "«Сборка» и «Монтаж»" in c.send("Сборка")
+    c.no_inline()
 
 
 def test_paid_features_blocked_without_subscription(db, owner):
     c = owner
-    assert "подписка" in c.send(BTN_NEW).lower()
+    assert "подписка" in c.press(BTN_NEW).lower()
     c.send("💸 Затраты")
-    assert "недоступно" in c.last().lower() or "подписка" in c.last().lower()
+    assert "подписка" in c.last().lower() or "недоступно" in c.last().lower()
+
+
+def test_settings_markups_step_by_step(db, owner):
+    c = owner
+    _activate(db)
+    c.send("⚙️ Настройки")
+    c.press("💵 Наценки")
+    c.press("40")
+    c.press("20")
+    c.send("15")
+    assert "Наценки сохранены" in c.send("50.000")
+    assert "материалы 40% · фурнитура 20% · работа цеха 15%" in c.last()
+    assert "Фиксированная доплата: 50.000 сум" in c.last()
 
 
 def test_duplicate_update_ignored(db, owner):
@@ -198,28 +313,24 @@ def test_duplicate_update_ignored(db, owner):
 
 
 def test_invite_and_login_deeplinks(db, owner):
-    from app.models import Enterprise
     from app.services import auth_web
-    ent = db.query(Enterprise).one()
-    tariffs.activate(db, ent.id, "BUSINESS", None)
-    db.commit()
+    _activate(db, "BUSINESS")
     owner.send("👥 Сотрудники")
-    link = owner.click("st:inv:manager")
+    link = owner.press("➕ Менеджер")
     code = link.split("start=inv_")[1].split()[0]
     worker = TgClient(4242, "Менеджер")
     worker.send(f"/start inv_{code}")
     assert any("присоединились" in t for t in worker.session.texts())
-    worker.send("💳 Подписка")
+    worker.send(BTN_SUB)
     assert "владелец" in worker.last()
 
     token, poll = auth_web.create_login_request(db)
     db.commit()
     worker.send(f"/start login_{token}")
-    assert ("✅ Подтвердить вход", f"login:{token}") in worker.buttons()
-    worker.click(f"login:{token}")
-    assert "Вход подтверждён" in worker.last()
+    assert "Вход подтверждён" in worker.press("✅ Подтвердить вход")
     db.expire_all()
     assert auth_web.poll_login(db, token, poll).telegram_id == 4242
+    worker.no_inline()
 
 
 def test_background_is_event_driven(db, monkeypatch):
@@ -242,9 +353,9 @@ def test_background_is_event_driven(db, monkeypatch):
 
     async def scenario():
         task = asyncio.create_task(runner.background(c.bot))
-        await asyncio.sleep(0.5)                       # первый проход: задачи + доставка
+        await asyncio.sleep(0.5)
         event.listen(dbmod.engine, "before_cursor_execute", listener)
-        await asyncio.sleep(2)                         # простой
+        await asyncio.sleep(2)
         idle = len(queries)
         with dbmod.session_scope() as s:
             notify(s, user.id, "Событие")
@@ -254,6 +365,5 @@ def test_background_is_event_driven(db, monkeypatch):
         task.cancel()
         return idle
 
-    idle_queries = asyncio.run(scenario())
-    assert idle_queries == 0
+    assert asyncio.run(scenario()) == 0
     assert any(getattr(m, "text", "") == "Событие" for m in c.session.calls)

@@ -59,7 +59,21 @@ def test_markup_snapshot_is_per_order(db):
 
 
 def test_money_format_and_words():
-    assert money(1234567.5) == "1 234 567,50 сум"
+    assert money(1234567.5) == "1.234.567,50\u00a0сум"
+    assert money(660000) == "660.000\u00a0сум"
     assert amount_in_words(1_201_021) == "Один миллион двести одна тысяча двадцать один сум 00 тийин"
     assert amount_in_words(2000) == "Две тысячи сум 00 тийин"
     assert amount_in_words(0) == "Ноль сум 00 тийин"
+
+
+def test_free_input_parsing():
+    from decimal import Decimal
+
+    from app.core.fmt import parse_money, parse_qty
+    for text, value in [("660.000", 660000), ("660 000 сум", 660000), ("660000", 660000), ("440,000", 440000),
+                        ("1.250.000,50", Decimal("1250000.50")), ("99,5", Decimal("99.5"))]:
+        assert parse_money(text) == Decimal(value), text
+    for text, value in [("3", 3), ("1,5", Decimal("1.5")), ("2.5 листа", Decimal("2.5"))]:
+        assert parse_qty(text) == Decimal(value), text
+    with pytest.raises(ValueError):
+        parse_money("дорого")

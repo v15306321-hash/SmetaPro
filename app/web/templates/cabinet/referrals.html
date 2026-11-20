@@ -10,7 +10,7 @@
 <div class="card" style="margin-top:16px">
   <div class="card-h"><h3>Ваша персональная ссылка</h3></div>
   <div class="row"><code style="word-break:break-all">{{ ref.links.telegram }}</code><button class="btn accent sm" type="button" data-copy="{{ ref.links.telegram }}">Скопировать</button>
-    <a class="btn ghost sm" href="https://t.me/share/url?url={{ ref.links.telegram|urlencode }}&text={{ 'Считаю сметы мебели в Furniture Estimate — попробуйте'|urlencode }}" rel="noopener">Отправить в Telegram</a></div>
+    <a class="btn ghost sm" href="https://t.me/share/url?url={{ ref.links.telegram|urlencode }}&text={{ 'Считаю сметы мебели в SmetaPro — попробуйте'|urlencode }}" rel="noopener">Отправить в Telegram</a></div>
   <div class="progress" style="margin-top:16px;height:10px" role="progressbar" aria-valuenow="{{ ref.discount }}" aria-valuemax="50" aria-label="Накопленная скидка"><i style="width:{{ ref.discount * 2 }}%"></i></div>
   <div class="row" style="justify-content:space-between;font-size:12px;color:var(--muted);margin-top:4px">{% for p in [0,10,20,30,40,50] %}<span>{{ p }}%</span>{% endfor %}</div>
   <ul class="muted" style="margin-top:16px">

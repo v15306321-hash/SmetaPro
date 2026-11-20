@@ -31,7 +31,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex">
-  <title>{% block title %}Кабинет{% endblock %} — Furniture Estimate</title>
+  <title>{% block title %}Кабинет{% endblock %} — SmetaPro</title>
   <link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -41,7 +41,7 @@
 <body>
 <div class="app">
   <aside class="side">
-    <a class="brand" href="/"><span class="brand-mark">{% include "partials/logo.svg" %}</span>Furniture Estimate</a>
+    <a class="brand" href="/"><span class="brand-mark">{% include "partials/logo.svg" %}</span>SmetaPro</a>
     {% for key, href, title in NAV %}
       <a class="nav-item {{ 'active' if section == key }}" href="{{ href }}">{{ icon(key) }}{{ title }}
         {% if section == key %}<span class="badge-mini">Активно</span>{% endif %}</a>
@@ -60,7 +60,7 @@
   <div class="main">
     <header class="top">
       <div class="crumb">
-        {% if admin_mode %}Администрирование<small>платформа Furniture Estimate</small>
+        {% if admin_mode %}Администрирование<small>платформа SmetaPro</small>
         {% elif ctx and ctx.enterprise %}{{ ctx.enterprise.name }}<small>{% block subtitle %}{% endblock %}</small>{% endif %}
       </div>
       <div class="right">
