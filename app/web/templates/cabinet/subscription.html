@@ -25,7 +25,7 @@
 
 <div class="card" style="margin-top:16px">
   <div class="card-h"><h3>{{ 'Продлить или сменить тариф' if current else 'Оплатить подписку' }}</h3>
-    {% if discount %}<span class="badge good" style="margin-left:auto">Реферальная скидка {{ discount }}% на эту оплату</span>{% endif %}</div>
+    {% if discount %}<span class="badge good" style="margin-left:auto">{{ 'Акция' if discount_source == 'promo' else 'Реферальная скидка' }} −{{ discount }}% на эту оплату</span>{% endif %}</div>
   {% if open_payment %}
     <p>У вас есть незавершённая заявка <b>{{ open_payment.uid }}</b>. <a href="/cabinet/payments/{{ open_payment.id }}">Открыть заявку →</a></p>
   {% endif %}

@@ -30,6 +30,12 @@ a { color: inherit; }
 img, svg { max-width: 100%; }
 .wrap { width: min(1200px, 100% - 32px); margin-inline: auto; }
 
+/* ---- promo */
+.promo-strip { background: var(--accent); color: var(--accent-ink); text-align: center; font-weight: 600; font-size: 14px; padding: 9px 16px; }
+.promo-strip a { text-decoration: none; }
+.price .old { color: var(--muted); text-decoration: line-through; font-size: 14px; margin-top: 18px; }
+.price .old + .amount { margin-top: 4px; }
+
 /* ---- header */
 .site-header { position: sticky; top: 0; z-index: 20; background: rgba(18,17,16,.86); backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--line); }

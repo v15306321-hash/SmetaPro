@@ -13,7 +13,7 @@ from app.bot.core import (BACK, BTN_ANALYTICS, BTN_LEAVE, BTN_REF, BTN_SETTINGS,
 from app.config import get_settings
 from app.core.errors import LimitReached
 from app.core.fmt import date_str, money, qty
-from app.services import accounts, employees, payments, referrals, tariffs
+from app.services import accounts, employees, payments, promo, referrals, tariffs
 
 router = Router(name="business")
 
@@ -335,10 +335,12 @@ async def sub_menu(message: Message, state: FSMContext, prefix: str = ""):
             last = tariffs.last_subscription(ctx.db, ctx.eid)
             text = "💳 <b>Подписка</b>\n\n" + (f"🔒 Истекла {date_str(last.ends_at)}. Все данные сохранены."
                                               if last else "Подписки ещё нет.")
-        discount, _ = referrals.available_discount(ctx.db, ctx.user.id)
+        discount, source, _ = payments.effective_discount(ctx.db, ctx.user)
         plans = {f"{p.title} — {money(p.price * (100 - discount) / 100, '').strip()} сум": p.code
                  for p in tariffs.list_plans(ctx.db)}
-        if discount:
+        if source == "promo":
+            text += f"\n\n{promo.banner()}\nЦены ниже — уже со скидкой."
+        elif discount:
             text += f"\n\n🎁 Ваша реферальная скидка на эту оплату: <b>{discount}%</b>"
         return text, plans, ctx.can("billing.manage")
     res = await call(message, work, keyboard=main_menu())
@@ -382,7 +384,8 @@ async def sub_method(message: Message, state: FSMContext):
 
     def work(ctx):
         pr = payments.create_request(ctx, data["plan"], method)
-        disc = f"\nСкидка {pr.discount_percent}% (без скидки {money(pr.base_amount)})" if pr.discount_percent else ""
+        disc = (f"\nСкидка {pr.discount_percent}% (без скидки {money(pr.base_amount)})"
+                if pr.discount_percent else "")
         holder = f"\nПолучатель: {e(pr.method.holder)}" if pr.method.holder else ""
         return pr.id, (f"🧾 Заявка <b>{pr.uid}</b>\nТариф {pr.plan_code} · 30 дней\n\n"
                        f"💰 Сумма к оплате: <b>{money(pr.amount)}</b>{disc}\n\n"

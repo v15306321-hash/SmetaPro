@@ -8,6 +8,7 @@ os.environ["BOT_TOKEN"] = "123456:TEST-TOKEN"
 os.environ["SUPERADMIN_TELEGRAM_IDS"] = "999"
 os.environ["APP_ENV"] = "test"
 os.environ["DEV_LOGIN"] = "true"
+os.environ["PROMO_PERCENT"] = "0"  # акция включается в отдельных тестах
 
 import pytest  # noqa: E402
 

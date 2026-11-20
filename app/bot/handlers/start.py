@@ -10,7 +10,7 @@ from aiogram.types import Message, ReplyKeyboardRemove
 from app.bot.core import BTN_SUB, BTN_WEB, HOME, SKIP, call, e, main_menu, rk
 from app.config import get_settings
 from app.core.permissions import ROLE_TITLES
-from app.services import accounts, auth_web, staff, tariffs
+from app.services import accounts, auth_web, promo, staff, tariffs
 
 router = Router(name="start")
 
@@ -87,13 +87,16 @@ async def start(message: Message, command: CommandObject, state: FSMContext):
     has_ent, status, joined, role = res
     if joined:
         await message.answer(f"👥 Вы присоединились к «{e(joined[0])}» как {joined[1].lower()}.")
+    deal = promo.banner()
+    deal_text = f"\n\n{deal}" if deal else ""
     if has_ent:
-        await message.answer(f"Здравствуйте, {e(message.from_user.first_name)}!\n\n{status}",
+        await message.answer(f"Здравствуйте, {e(message.from_user.first_name)}!\n\n{status}{deal_text}",
                              reply_markup=main_menu(role))
         return
     await message.answer(
         "👋 Добро пожаловать в <b>SmetaPro</b>!\n\n"
-        "Здесь вы считаете стоимость мебели, отправляете клиентам PDF-сметы и видите, сколько зарабатывает цех.\n\n"
+        "Здесь вы считаете стоимость мебели, отправляете клиентам PDF-сметы и видите, сколько зарабатывает цех."
+        f"{deal_text}\n\n"
         "Давайте зарегистрируем ваше предприятие.\n\n🏭 Как оно называется?",
         reply_markup=ReplyKeyboardRemove())
     await state.set_state(Reg.name)

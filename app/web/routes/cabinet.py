@@ -121,6 +121,14 @@ def order_page(order_id: int, request: Request, ctx: Ctx = Depends(require_ctx))
                 STATUS_TITLES=orders.STATUS_TITLES)
 
 
+@router.post("/orders/{order_id}/delete", **POST)
+def order_delete(order_id: int, ctx: Ctx = Depends(require_ctx)):
+    _need_enterprise(ctx)
+    number = orders.get(ctx, order_id).number
+    orders.delete(ctx, order_id)
+    return flash_redirect("/cabinet/orders", ok=f"Заказ №{number} удалён.")
+
+
 @router.get("/estimates/{uid}.pdf")
 def estimate_pdf(uid: str, ctx: Ctx = Depends(require_ctx)):
     _need_enterprise(ctx)
@@ -136,9 +144,9 @@ def subscription_page(request: Request, ctx: Ctx = Depends(require_ctx)):
     _need_enterprise(ctx)
     db = ctx.db
     plans = tariffs.list_plans(db)
-    discount, _ = referrals.available_discount(db, ctx.user.id)
+    discount, discount_source, _ = payments.effective_discount(db, ctx.user)
     return page(request, ctx, "cabinet/subscription.html", "subscription", plans=plans,
-                methods=payments.list_methods(db), discount=discount,
+                methods=payments.list_methods(db), discount=discount, discount_source=discount_source,
                 current=tariffs.current_subscription(db, ctx.eid), queued=tariffs.queued_subscriptions(db, ctx.eid),
                 last=tariffs.last_subscription(db, ctx.eid), history=tariffs.subscription_history(db, ctx.eid),
                 open_payment=next((x for x in payments.history(db, ctx.eid) if x.status in payments.OPEN_STATUSES),

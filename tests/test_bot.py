@@ -84,6 +84,14 @@ class TgClient:
         assert not any(isinstance(getattr(m, "reply_markup", None), InlineKeyboardMarkup) for m in self.session.calls)
 
 
+@pytest.fixture(autouse=True)
+def _fresh_dialogs():
+    """Диспетчер общий для тестов — сбрасываем незавершённые диалоги (FSM) между тестами."""
+    _, dp = build()
+    dp.storage.storage.clear()
+    yield
+
+
 @pytest.fixture()
 def owner(db):
     c = TgClient(31337, "Сардор")
@@ -346,7 +354,7 @@ def test_employee_access_and_leave(db, owner):
     worker.send(f"/start inv_{code}")
     assert any("присоединились" in t for t in worker.session.texts())
     assert set(worker.buttons()) == {"🧮 Новый расчёт", "📋 Заказы", "📦 Материалы", "🌐 Веб-кабинет",
-                                     "🚪 Уйти из цеха"}           # без подписки и сотрудников
+                                     "👨‍💻 Тех. поддержка", "🌐 Язык", "🚪 Уйти из цеха"}  # без подписки и сотрудников
     assert "Новый расчет открыт" in worker.press("🧮 Новый расчёт")
     worker.send(BTN_SUB)
     assert "владелец" in worker.last()
@@ -415,3 +423,39 @@ def test_background_is_event_driven(db, monkeypatch):
 
     assert asyncio.run(scenario()) == 0
     assert any(getattr(m, "text", "") == "Событие" for m in c.session.calls)
+
+
+def test_support_roundtrip(db, owner):
+    admin = TgClient(999, "Админ")
+    admin.send("/start")
+    assert "Техническая поддержка" in owner.send("👨‍💻 Тех. поддержка")
+    assert "отправлено в поддержку" in owner.send("Не формируется смета")
+    to_admin = [m for m in admin.session.calls if "#u31337" in (getattr(m, "text", "") or "")]
+    # сообщение ушло через бота-владельца сессии клиента; эмулируем ответ админа reply на него
+    sent = [m for m in owner.session.calls if getattr(m, "chat_id", None) == 999]
+    assert sent and "Не формируется смета" in sent[-1].text and "#u31337" in sent[-1].text
+    reply_to = Message(message_id=5, date=datetime.now(), chat=admin.chat, text=sent[-1].text,
+                       from_user=TgUser(id=1, is_bot=True, first_name="SmetaPro"))
+    msg = Message(message_id=next(_ids), date=datetime.now(), chat=admin.chat, from_user=admin.user,
+                  text="Нажмите «📄PDF-смета» ещё раз", reply_to_message=reply_to)
+    admin._run(Update(update_id=next(_ids), message=msg))
+    answer = [m for m in admin.session.calls if getattr(m, "chat_id", None) == 31337]
+    assert answer and "Ответ поддержки" in answer[-1].text and "ещё раз" in answer[-1].text
+    assert "Ответ отправлен" in admin.last()
+    _ = to_admin
+
+
+def test_delete_order(db, owner):
+    c = owner
+    _activate(db)
+    c.press(BTN_NEW)
+    c.press(SKIP)
+    c.press(SKIP)
+    c.press("1")
+    c.press("Стол")
+    assert "удалятся" in c.press("🗑Удалить заказ")
+    assert "Заказ №1" in c.press("❌ Нет")
+    c.press("🗑Удалить заказ")
+    c.press("✅ Да")
+    assert any("Заказ удалён" in t for t in c.session.texts())
+    assert db.query(Order).count() == 0

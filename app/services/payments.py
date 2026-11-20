@@ -37,10 +37,23 @@ def list_methods(db: Session, only_active: bool = True) -> list[PaymentMethod]:
     return list(db.scalars(q))
 
 
+def effective_discount(db: Session, user: User) -> tuple[int, str | None, list[int]]:
+    """(процент, источник «promo»|«referral»|None, id рефералов). Скидки не суммируются (ТЗ 15.3):
+    берётся бо́льшая; если выгоднее акция, накопленная реферальная скидка сохраняется."""
+    from app.services import promo
+    ref, ref_ids = referrals.available_discount(db, user.id)
+    pr = promo.active_percent()
+    if ref > pr:
+        return ref, "referral", ref_ids
+    if pr:
+        return pr, "promo", []
+    return 0, None, []
+
+
 def quote(db: Session, user: User, plan: Plan) -> dict:
-    discount, ref_ids = referrals.available_discount(db, user.id)
+    discount, source, ref_ids = effective_discount(db, user)
     amount = money_round(plan.price * (Decimal(100 - discount) / 100))
-    return dict(base=plan.price, discount=discount, amount=amount, referral_ids=ref_ids)
+    return dict(base=plan.price, discount=discount, amount=amount, referral_ids=ref_ids, source=source)
 
 
 def create_request(ctx: Ctx, plan_code: str, method_code: str) -> PaymentRequest:

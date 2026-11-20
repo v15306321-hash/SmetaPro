@@ -4,7 +4,8 @@
   <div class="price {{ 'featured' if p.code == 'BUSINESS' }}">
     <h3>{{ p.title }}</h3>
     <div class="sub">{{ p.subtitle }}</div>
-    <div class="amount">{{ p.price|money('') }}</div>
+    {% if promo_pct %}<div class="old">{{ p.price|money('') }}</div>{% endif %}
+    <div class="amount">{{ (p.price * (100 - promo_pct) / 100)|money('') }}</div>
     <div class="per">сум за 30 дней</div>
     <ul>
       <li>✓ {{ p.estimates_limit }} генераций смет</li>

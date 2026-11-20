@@ -11,7 +11,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import BufferedInputFile, Message
 
-from app.bot.core import (BACK, BTN_NEW, BTN_ORDERS, HOME, MANUAL, OTHER_NUMBER, SKIP, TO_ORDER, TO_ORDER_LONG,
+from app.bot.core import (BACK, BTN_NEW, BTN_ORDERS, HOME, MANUAL, NO, OTHER_NUMBER, SKIP, TO_ORDER, TO_ORDER_LONG, YES,
                           amount_text, call, e, grid, main_menu, numbers_kb, price_buttons, read_money, read_qty, rk)
 from app.core.fmt import money, qty
 from app.models import ItemKind, OrderStatus
@@ -34,6 +34,7 @@ C_REMOVE = "🗑Удалить позицию"
 C_STATUS = "🔄Статус"
 C_WASTE = "♻️Расход и отходы"
 C_SWITCH = "🛋Сменить изделие"
+C_DELETE = "🗑Удалить заказ"
 C_NEXT_PREFIX = "🛋Изделие №"
 MORE_ORDERS = "🔎 Ещё заказы"
 
@@ -54,6 +55,7 @@ class Calc(StatesGroup):
     work_price = State()
     workers_count = State()
     remove = State()
+    delete = State()
     status = State()
     switch = State()
     orders = State()
@@ -129,6 +131,8 @@ def card_kb(info: dict):
     if info["has_items"]:
         rows.append([b for b, ok in ((C_PDF, info["can_pdf"]), (C_REMOVE, info["can_edit"])) if ok])
         rows.append([b for b, ok in ((C_STATUS, info["statuses"]), (C_WASTE, info["waste"])) if ok])
+    if info["can_edit"]:
+        rows.append([C_DELETE])
     rows.append([HOME, BACK])
     return rk(*rows, placeholder="Выберите действие")
 
@@ -460,6 +464,30 @@ async def remove_pick(message: Message, state: FSMContext):
     fn = orders.remove_worker if kind == "worker" else orders.remove_item
     if await call(message, lambda ctx: fn(ctx, data["order_id"], tid).id):
         await show_card(message, state, "🗑 Удалено из заказа.")
+
+
+# ---------------------------------------------------------------- удаление заказа
+
+@router.message(Calc.card, F.text == C_DELETE)
+async def delete_start(message: Message, state: FSMContext):
+    data = await state.get_data()
+    number = await call(message, lambda ctx: orders.get(ctx, data["order_id"]).number)
+    if number:
+        await state.set_state(Calc.delete)
+        await message.answer(f"🗑 Удалить заказ №{number} целиком? Позиции и сметы этого заказа тоже удалятся. "
+                             "Это действие нельзя отменить.", reply_markup=rk([YES, NO]))
+
+
+@router.message(Calc.delete, F.text)
+async def delete_confirm(message: Message, state: FSMContext):
+    if message.text != YES:
+        await show_card(message, state)
+        return
+    data = await state.get_data()
+    if await call(message, lambda ctx: (orders.delete(ctx, data["order_id"]), True)[1]):
+        await state.update_data(order_id=None)
+        await message.answer("🗑 Заказ удалён.")
+        await orders_list(message, state)
 
 
 # ---------------------------------------------------------------- статус (PRO)

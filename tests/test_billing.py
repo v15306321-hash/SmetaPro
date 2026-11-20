@@ -156,3 +156,29 @@ def test_concurrent_approval_activates_once(db):
     db.expire_all()
     assert results.count("ok") == 1, results
     assert db.query(Subscription).filter_by(enterprise_id=ctx.eid).count() == 1
+
+
+def test_promo_discount_not_combined_with_referral(db, monkeypatch):
+    """Акция −50 % до 1 января; реферальная скидка не суммируется — берётся бо́льшая, накопление сохраняется."""
+    from datetime import datetime
+
+    from app.config import get_settings
+    from app.services import promo
+    s = get_settings()
+    monkeypatch.setattr(s, "promo_percent", 50)
+    monkeypatch.setattr(s, "promo_until", "2027-01-01")
+    assert promo.active_percent(datetime(2026, 12, 31, 18, 0)) == 50     # 31.12 23:00 по Ташкенту
+    assert promo.active_percent(datetime(2026, 12, 31, 19, 1)) == 0      # 1 января по Ташкенту
+    assert promo.banner(datetime(2026, 11, 21)) == "🔥 Акция: до 1 января все тарифы со скидкой 50%!"
+
+    ref_ctx = make_enterprise(db, plan=None, name="Пригласивший")
+    _invite_paid(db, ref_ctx.user, 1)                                    # реферальная 10 % (оплата друга — по акции)
+    pr = payments.create_request(ref_ctx, "PRO", "HUMO")
+    assert pr.discount_percent == 50 and pr.amount == Decimal("374500.00") and not pr.referral_ids
+    payments.attach_receipt(ref_ctx, pr.id, file_id="f")
+    payments.approve(db, admin(db), pr.id)
+    assert referrals.available_discount(db, ref_ctx.user.id)[0] == 10    # не сгорела
+
+    monkeypatch.setattr(s, "promo_until", "2026-01-01")                  # акция закончилась
+    pr2 = payments.create_request(ref_ctx, "PRO", "HUMO")
+    assert pr2.discount_percent == 10 and pr2.referral_ids

@@ -19,6 +19,7 @@
   <link rel="stylesheet" href="/static/css/site.css">
 </head>
 <body>
+{% if promo_banner %}<div class="promo-strip"><a href="/pricing">{{ promo_banner }}</a></div>{% endif %}
 <header class="site-header">
   <div class="wrap">
     <a class="brand" href="/">

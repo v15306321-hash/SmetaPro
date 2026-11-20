@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     # Показывать Telegram Login Widget (нужно указать домен сайта в @BotFather: /setdomain)
     telegram_login_widget: bool = False
 
+    # Акция на подписку: скидка PROMO_PERCENT % до даты PROMO_UNTIL (не включая её), по времени Ташкента.
+    # Не суммируется с реферальной скидкой — применяется бо́льшая (ТЗ 15.3). 0 — акции нет.
+    promo_percent: int = 50
+    promo_until: str = "2027-01-01"
+
     # Стоимость услуги «настройка базы материалов специалистом», сум
     setup_service_price: int = 100000
 

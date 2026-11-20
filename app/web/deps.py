@@ -75,6 +75,9 @@ def render(request: Request, name: str, status_code: int = 200, **ctx) -> object
     ctx["request"] = request
     ctx["flash"] = request.query_params.get("ok")
     ctx["flash_error"] = request.query_params.get("err")
+    from app.services import promo
+    ctx.setdefault("promo_pct", promo.active_percent())
+    ctx.setdefault("promo_banner", promo.banner())
     return templates.TemplateResponse(request, name, ctx, status_code=status_code)
 
 
