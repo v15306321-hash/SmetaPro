@@ -168,14 +168,24 @@ def top_orders(ctx: Ctx, start: date, end: date, limit: int = 6) -> list[Order]:
 
 
 def margin_by_section(ctx: Ctx, start: date, end: date) -> list[tuple[str, float]]:
-    """Маржинальность (%) по изделиям (секциям заказа)."""
+    """Маржинальность (%) по изделиям: прибыль цеха (работа цеха + доплата − оплата рабочим) к цене.
+
+    Прибыль заказа делится между изделиями пропорционально их себестоимости.
+    """
+    from collections import defaultdict
     s, e = _utc_bounds(start, end)
-    q = (select(OrderItem.section, func.sum(OrderItem.cost), func.sum(OrderItem.price))
-         .join(Order, Order.id == OrderItem.order_id)
-         .where(Order.enterprise_id == ctx.eid, Order.created_at >= s, Order.created_at < e)
-         .group_by(OrderItem.section))
-    out = []
-    for section, cost, price in ctx.db.execute(q):
-        if price:
-            out.append((section or "Без раздела", round((float(price) - float(cost or 0)) / float(price) * 100, 1)))
+    rows = ctx.db.scalars(select(Order).where(Order.enterprise_id == ctx.eid, Order.created_at >= s,
+                                              Order.created_at < e))
+    price, profit = defaultdict(float), defaultdict(float)
+    for o in rows:
+        cost_total = float(o.cost_total or 0)
+        if not o.items or cost_total <= 0:
+            continue
+        order_profit, order_price = float(o.profit), float(o.price_total or 0)
+        for it in o.items:
+            share = float(it.cost or 0) / cost_total
+            key = it.section or o.title or "Без раздела"
+            price[key] += order_price * share
+            profit[key] += order_profit * share
+    out = [(k, round(profit[k] / price[k] * 100, 1)) for k in price if price[k]]
     return sorted(out, key=lambda x: -x[1])[:6]
